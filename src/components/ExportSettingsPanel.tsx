@@ -74,7 +74,7 @@ export function ExportSettingsPanel() {
   const setCrop = useEditor((s) => s.setCrop)
   const crop = useEditor((s) => s.crop)
   const segments = useEditor((s) => s.segments)
-  const disabled = useEditor((s) => s.job.kind === 'running')
+
 
   // Se lee el valor actual del store (no el del render) para que clics rápidos se acumulen bien.
   const rotate = (delta: 90 | -90) => {
@@ -83,7 +83,7 @@ export function ExportSettingsPanel() {
   }
 
   return (
-    <fieldset className="flex flex-col gap-4" disabled={disabled}>
+    <div className="flex flex-col gap-4">
       <Section title="Destino">
         <div className="grid grid-cols-2 gap-1.5">
           {PRESETS.map((p) => (
@@ -205,6 +205,6 @@ export function ExportSettingsPanel() {
           </div>
         </Section>
       )}
-    </fieldset>
+    </div>
   )
 }

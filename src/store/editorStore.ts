@@ -26,12 +26,20 @@ export interface ExportResult {
   size: number
 }
 
-export type JobState =
-  | { kind: 'idle' }
-  | { kind: 'running'; label: string; progress: number }
-  | { kind: 'done'; results: ExportResult[] }
-  | { kind: 'error'; message: string }
-  | { kind: 'cancelled' }
+export type JobStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
+
+/** Trabajo de la cola: copia de ajustes, encuadre y segmentos en el momento de añadirlo. */
+export interface QueueJob {
+  id: string
+  settings: ExportSettings
+  crop: CropRect | null
+  segments: Segment[]
+  status: JobStatus
+  progress: number
+  label: string
+  results: ExportResult[]
+  error: string | null
+}
 
 interface EditorState {
   // Video fuente
@@ -61,7 +69,8 @@ interface EditorState {
   settings: ExportSettings
   /** Encuadre manual; null = centrado automático. */
   crop: CropRect | null
-  job: JobState
+  queue: QueueJob[]
+  queueRunning: boolean
 
   setFile: (file: File | null) => void
   setPreview: (url: string, isProxy: boolean) => void
@@ -89,7 +98,12 @@ interface EditorState {
   setSettings: (patch: Partial<ExportSettings>) => void
   choosePreset: (preset: Preset) => void
   setCrop: (crop: CropRect | null) => void
-  setJob: (job: JobState) => void
+  /** Añade un trabajo con los ajustes y segmentos actuales; devuelve su id (o null si no hay segmentos). */
+  enqueue: () => string | null
+  updateJob: (id: string, patch: Partial<QueueJob>) => void
+  removeJob: (id: string) => void
+  clearFinished: () => void
+  setQueueRunning: (v: boolean) => void
 }
 
 let idCounter = 0
@@ -114,9 +128,11 @@ function freeGapAt(segments: Segment[], t: number, duration: number) {
   return { lo, hi }
 }
 
-function revokeResults(job: JobState) {
-  if (job.kind === 'done') job.results.forEach((r) => URL.revokeObjectURL(r.url))
+function revokeResults(job: QueueJob) {
+  job.results.forEach((r) => URL.revokeObjectURL(r.url))
 }
+
+const finished = (j: QueueJob) => j.status === 'done' || j.status === 'error' || j.status === 'cancelled'
 
 export const useEditor = create<EditorState>((set, get) => ({
   file: null,
@@ -141,12 +157,13 @@ export const useEditor = create<EditorState>((set, get) => ({
   engineError: null,
   settings: DEFAULT_SETTINGS,
   crop: null,
-  job: { kind: 'idle' },
+  queue: [],
+  queueRunning: false,
 
   setFile: (file) => {
-    const { previewUrl, job } = get()
+    const { previewUrl, queue } = get()
     if (previewUrl) URL.revokeObjectURL(previewUrl)
-    revokeResults(job)
+    queue.forEach(revokeResults)
     set({
       file,
       previewUrl: file ? URL.createObjectURL(file) : null,
@@ -163,7 +180,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedId: null,
       markIn: null,
       notice: null,
-      job: { kind: 'idle' },
+      queue: [],
     })
   },
   setPreview: (url, isProxy) => {
@@ -278,11 +295,36 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ settings: next, ...(next.aspect !== prev.aspect ? { crop: null } : {}) })
   },
   setCrop: (crop) => set({ crop }),
-  setJob: (job) => {
-    const prev = get().job
-    if (prev !== job) revokeResults(prev)
-    set({ job })
+  enqueue: () => {
+    const { segments, settings, crop, queue } = get()
+    if (segments.length === 0) return null
+    const job: QueueJob = {
+      id: `job-${Date.now().toString(36)}-${idCounter++}`,
+      settings: { ...settings },
+      crop: crop ? { ...crop } : null,
+      segments: segments.map((s) => ({ ...s })),
+      status: 'pending',
+      progress: 0,
+      label: 'En cola',
+      results: [],
+      error: null,
+    }
+    set({ queue: [...queue, job] })
+    return job.id
   },
+  updateJob: (id, patch) => set({ queue: get().queue.map((j) => (j.id === id ? { ...j, ...patch } : j)) }),
+  removeJob: (id) => {
+    const job = get().queue.find((j) => j.id === id)
+    if (!job || job.status === 'running') return
+    revokeResults(job)
+    set({ queue: get().queue.filter((j) => j.id !== id) })
+  },
+  clearFinished: () => {
+    const { queue } = get()
+    queue.filter(finished).forEach(revokeResults)
+    set({ queue: queue.filter((j) => !finished(j)) })
+  },
+  setQueueRunning: (queueRunning) => set({ queueRunning }),
 }))
 
 /** Límites (por tiempo) entre los que puede moverse un segmento sin pisar a sus vecinos. */
