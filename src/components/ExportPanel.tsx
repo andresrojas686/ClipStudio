@@ -1,109 +1,34 @@
 import type { ReactNode } from 'react'
 import { useFfmpeg } from '../hooks/useFfmpeg'
 import { needsBrowserDecoder } from '../lib/exporter'
-import { isStreamCopy } from '../lib/ffmpegCommands'
 import { formatBytes, getExtension } from '../lib/formatUtils'
-import { useEditor, type ExportOptions } from '../store/editorStore'
+import { describeOutput } from '../lib/geometry'
+import { isStreamCopy } from '../lib/presets'
+import { useEditor } from '../store/editorStore'
+import { ExportSettingsPanel } from './ExportSettingsPanel'
 import { ProgressBar } from './ProgressBar'
-
-function Choice<K extends keyof ExportOptions>({
-  name,
-  field,
-  options,
-}: {
-  name: string
-  field: K
-  options: { value: ExportOptions[K]; label: string; hint: string }[]
-}) {
-  const value = useEditor((s) => s.options[field])
-  const setOptions = useEditor((s) => s.setOptions)
-  const disabled = useEditor((s) => s.job.kind === 'running')
-  return (
-    <fieldset className="flex flex-col gap-1.5" disabled={disabled}>
-      <legend className="mb-1 text-xs font-semibold tracking-wide text-zinc-400 uppercase">{name}</legend>
-      <div className="grid grid-cols-2 gap-2">
-        {options.map((o) => (
-          <label
-            key={String(o.value)}
-            className={`flex cursor-pointer flex-col rounded-lg px-3 py-2 ring-1 transition ${
-              value === o.value ? 'bg-violet-500/15 ring-violet-500' : 'bg-zinc-900 ring-zinc-800 hover:ring-zinc-600'
-            }`}
-          >
-            <input
-              type="radio"
-              className="sr-only"
-              name={field}
-              checked={value === o.value}
-              onChange={() => setOptions({ [field]: o.value } as Partial<ExportOptions>)}
-            />
-            <span className="text-sm font-medium">{o.label}</span>
-            <span className="text-xs text-zinc-400">{o.hint}</span>
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  )
-}
 
 export function ExportPanel() {
   const file = useEditor((s) => s.file)
   const segments = useEditor((s) => s.segments)
-  const options = useEditor((s) => s.options)
+  const settings = useEditor((s) => s.settings)
+  const crop = useEditor((s) => s.crop)
+  const info = useEditor((s) => s.info)
   const job = useEditor((s) => s.job)
   const engine = useEditor((s) => s.engine)
   const { runExport, cancel } = useFfmpeg()
 
   const running = job.kind === 'running'
   const ext = file ? getExtension(file.name) : ''
-  const copy = isStreamCopy(options)
-  const info = useEditor((s) => s.info)
-  const browserDecode = needsBrowserDecoder(info, options)
+  const copy = isStreamCopy(settings)
+  const browserDecode = needsBrowserDecoder(info, settings)
 
   return (
     <section className="flex flex-col gap-4">
-      <Choice
-        name="Formato"
-        field="format"
-        options={[
-          { value: 'original', label: 'Original', hint: 'Mismo encuadre y resolución' },
-          { value: 'vertical', label: 'Vertical 9:16', hint: 'TikTok, Reels, Shorts' },
-        ]}
-      />
-
-      {options.format === 'vertical' ? (
-        <Choice
-          name="Modo vertical"
-          field="verticalMode"
-          options={[
-            { value: 'crop', label: 'Recorte central', hint: 'Llena la pantalla, corta los lados' },
-            { value: 'blur', label: 'Fondo desenfocado', hint: 'Video completo sobre fondo borroso' },
-          ]}
-        />
-      ) : (
-        <Choice
-          name="Corte"
-          field="cutMode"
-          options={[
-            { value: 'fast', label: 'Rápido', hint: 'Sin re-codificar; corta en keyframes' },
-            { value: 'precise', label: 'Preciso', hint: 'Re-codifica a MP4; exacto al fotograma' },
-          ]}
-        />
-      )}
-
-      {segments.length > 1 && (
-        <Choice
-          name="Varios segmentos"
-          field="combine"
-          options={[
-            { value: 'separate', label: 'Clips separados', hint: `${segments.length} archivos` },
-            { value: 'merge', label: 'Un solo video', hint: 'Unidos en el orden de la lista' },
-          ]}
-        />
-      )}
+      <ExportSettingsPanel />
 
       <p className="text-xs text-zinc-500">
-        Salida: {copy ? `.${ext} (mismo códec que el original)` : 'MP4 · H.264 + AAC'}
-        {options.format === 'vertical' && ' · 1080×1920'}
+        Salida: {describeOutput(settings, crop, info?.width ?? null, info?.height ?? null, ext)}
         {!copy && !browserDecode && ' · re-codificar en el navegador puede tardar varias veces la duración del clip.'}
       </p>
       {browserDecode && (
@@ -124,7 +49,7 @@ export function ExportPanel() {
         <button type="button" className="btn-primary py-3 text-base" disabled={segments.length === 0} onClick={runExport}>
           {segments.length === 0
             ? 'Añade al menos un segmento'
-            : `Exportar ${segments.length > 1 && options.combine === 'separate' ? `${segments.length} clips` : 'clip'}`}
+            : `Exportar ${segments.length > 1 && settings.combine === 'separate' ? `${segments.length} clips` : 'clip'}`}
         </button>
       )}
 

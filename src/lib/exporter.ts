@@ -1,14 +1,9 @@
-import type { ExportOptions, ExportResult, Segment } from '../store/editorStore'
+import type { ExportResult, Segment } from '../store/editorStore'
 import { CancelledError, onTerminate, probe, UNDECODABLE_CODECS, withFFmpeg, type ProbeInfo } from './ffmpegClient'
-import {
-  buildConcatArgs,
-  buildConcatList,
-  buildCutArgs,
-  buildProxyArgs,
-  isStreamCopy,
-  outputExtension,
-} from './ffmpegCommands'
+import { buildConcatArgs, buildConcatList, buildCutArgs, buildProxyArgs, outputExtension } from './ffmpegCommands'
 import { getBaseName, getExtension } from './formatUtils'
+import { computeGeometry } from './geometry'
+import { isStreamCopy, type CropRect, type ExportSettings } from './presets'
 
 export type ProgressFn = (progress: number, label: string) => void
 
@@ -24,14 +19,14 @@ function toBlob(data: Uint8Array, ext: string) {
   return new Blob([data as Uint8Array<ArrayBuffer>], { type: MIME[ext] ?? 'application/octet-stream' })
 }
 
-function suffix(opts: ExportOptions) {
-  if (opts.format === 'vertical') return opts.verticalMode === 'blur' ? '9x16_blur' : '9x16'
-  return isStreamCopy(opts) ? 'original' : 'original_hq'
+function suffix(s: ExportSettings) {
+  const fit = s.aspect !== 'original' && s.fit === 'blur' ? '_blur' : ''
+  return `${s.presetId}${fit}${isStreamCopy(s) ? '' : s.aspect === 'original' ? '_hq' : ''}`
 }
 
 /** ¿Hay que re-codificar con WebCodecs porque ffmpeg.wasm no decodifica este códec? */
-export function needsBrowserDecoder(info: ProbeInfo | null, opts: ExportOptions) {
-  return !isStreamCopy(opts) && !!info?.videoCodec && UNDECODABLE_CODECS.includes(info.videoCodec)
+export function needsBrowserDecoder(info: ProbeInfo | null, s: ExportSettings) {
+  return !isStreamCopy(s) && !!info?.videoCodec && UNDECODABLE_CODECS.includes(info.videoCodec)
 }
 
 /** Traduce los errores más comunes de FFmpeg a algo comprensible. */
@@ -52,18 +47,23 @@ function explain(e: unknown, info: ProbeInfo | null): unknown {
 export async function exportSegments(
   file: File,
   segments: Segment[],
-  opts: ExportOptions,
+  settings: ExportSettings,
+  crop: CropRect | null,
   info: ProbeInfo | null,
   onProgress: ProgressFn,
 ): Promise<ExportResult[]> {
   const srcExt = getExtension(file.name)
-  const ext = outputExtension(opts, srcExt)
+  const ext = outputExtension(settings, srcExt)
   const base = getBaseName(file.name)
-  const tag = suffix(opts)
+  const tag = suffix(settings)
   const total = segments.reduce((acc, s) => acc + (s.end - s.start), 0)
-  const browserDecode = needsBrowserDecoder(info, opts)
+  const browserDecode = needsBrowserDecoder(info, settings)
   const hasAudio = info?.hasAudio ?? true
   const videoStream = info?.videoStream ?? null
+  if (!isStreamCopy(settings) && !(info?.width && info?.height)) {
+    throw new Error('No se pudieron leer las dimensiones del video.')
+  }
+  const geo = computeGeometry(settings, crop, info?.width ?? 0, info?.height ?? 0)
   // mediabunny solo se descarga cuando un video lo necesita.
   const { convertSegment } = browserDecode ? await import('./webcodecsExporter') : { convertSegment: null }
 
@@ -71,7 +71,7 @@ export async function exportSegments(
     const results: ExportResult[] = []
     const temp: string[] = []
     let done = 0
-    const merge = opts.combine === 'merge' && segments.length > 1
+    const merge = settings.combine === 'merge' && segments.length > 1
     // Al unir dejamos ~5 % del progreso para la concatenación final.
     const scale = merge ? 0.95 : 1
 
@@ -86,7 +86,7 @@ export async function exportSegments(
 
         let data: Uint8Array
         if (convertSegment) {
-          const job = convertSegment(file, seg.start, seg.end, opts, (p) => report(p * dur))
+          const job = convertSegment(file, seg.start, seg.end, geo, settings.bitrate, (p) => report(p * dur))
           const off = onTerminate(job.cancel)
           try {
             data = await job.promise
@@ -99,7 +99,7 @@ export async function exportSegments(
           }
           if (merge) await write(out, data)
         } else {
-          await exec(buildCutArgs({ input, output: out, start: seg.start, end: seg.end, hasAudio, videoStream }, opts), report)
+          await exec(buildCutArgs({ input, output: out, start: seg.start, end: seg.end, hasAudio, videoStream }, settings, geo), report)
           data = merge ? new Uint8Array() : await read(out)
           if (!merge) await remove(out)
         }

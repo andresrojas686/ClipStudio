@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import type { ProbeInfo } from '../lib/ffmpegClient'
 import { MIN_SEGMENT_SECONDS } from '../lib/formatUtils'
+import {
+  applyPreset,
+  CUSTOM_PRESET_ID,
+  DEFAULT_SETTINGS,
+  type CropRect,
+  type ExportSettings,
+  type Preset,
+} from '../lib/presets'
 
 export interface Segment {
   id: string
@@ -8,17 +16,7 @@ export interface Segment {
   end: number
 }
 
-export type OutputFormat = 'original' | 'vertical'
-export type VerticalMode = 'crop' | 'blur'
-export type CutMode = 'fast' | 'precise'
-export type CombineMode = 'separate' | 'merge'
-
-export interface ExportOptions {
-  format: OutputFormat
-  verticalMode: VerticalMode
-  cutMode: CutMode
-  combine: CombineMode
-}
+export type { CropRect, ExportSettings } from '../lib/presets'
 
 export type EngineStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -60,7 +58,9 @@ interface EditorState {
   // Motor y exportación
   engine: EngineStatus
   engineError: string | null
-  options: ExportOptions
+  settings: ExportSettings
+  /** Encuadre manual; null = centrado automático. */
+  crop: CropRect | null
   job: JobState
 
   setFile: (file: File | null) => void
@@ -85,7 +85,10 @@ interface EditorState {
   setNotice: (msg: string | null) => void
 
   setEngine: (s: EngineStatus, error?: string | null) => void
-  setOptions: (patch: Partial<ExportOptions>) => void
+  /** Cambia ajustes; si no es un preset, pasa a "Personalizado". */
+  setSettings: (patch: Partial<ExportSettings>) => void
+  choosePreset: (preset: Preset) => void
+  setCrop: (crop: CropRect | null) => void
   setJob: (job: JobState) => void
 }
 
@@ -136,7 +139,8 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   engine: 'idle',
   engineError: null,
-  options: { format: 'vertical', verticalMode: 'crop', cutMode: 'precise', combine: 'separate' },
+  settings: DEFAULT_SETTINGS,
+  crop: null,
   job: { kind: 'idle' },
 
   setFile: (file) => {
@@ -151,6 +155,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       proxyProgress: 0,
       duration: 0,
       info: null,
+      crop: null,
       currentTime: 0,
       playing: false,
       playUntil: null,
@@ -257,7 +262,22 @@ export const useEditor = create<EditorState>((set, get) => ({
   setNotice: (notice) => set({ notice }),
 
   setEngine: (engine, engineError = null) => set({ engine, engineError }),
-  setOptions: (patch) => set({ options: { ...get().options, ...patch } }),
+  setSettings: (patch) => {
+    const prev = get().settings
+    const next = { ...prev, ...patch }
+    // Cambiar algo que define el formato convierte el preset en "Personalizado".
+    const shapeKeys: (keyof ExportSettings)[] = ['aspect', 'fit', 'resolution', 'bitrate']
+    if (shapeKeys.some((k) => k in patch && patch[k] !== prev[k])) next.presetId = CUSTOM_PRESET_ID
+    // Si cambia la proporción o la rotación, el encuadre anterior deja de tener sentido.
+    const resetCrop = next.aspect !== prev.aspect || next.rotation !== prev.rotation
+    set({ settings: next, ...(resetCrop ? { crop: null } : {}) })
+  },
+  choosePreset: (preset) => {
+    const prev = get().settings
+    const next = applyPreset(prev, preset)
+    set({ settings: next, ...(next.aspect !== prev.aspect ? { crop: null } : {}) })
+  },
+  setCrop: (crop) => set({ crop }),
   setJob: (job) => {
     const prev = get().job
     if (prev !== job) revokeResults(prev)

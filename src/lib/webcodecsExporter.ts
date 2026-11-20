@@ -6,12 +6,13 @@ import {
   Input,
   Mp4OutputFormat,
   Output,
+  Quality,
   QUALITY_HIGH,
   type ConversionVideoOptions,
   type VideoSample,
 } from 'mediabunny'
-import type { ExportOptions } from '../store/editorStore'
-import { VERTICAL_H, VERTICAL_W } from './ffmpegCommands'
+import type { OutputGeometry } from './geometry'
+import type { Bitrate } from './presets'
 
 /**
  * Re-codificación con las APIs nativas del navegador (WebCodecs) vía mediabunny.
@@ -24,39 +25,55 @@ export function webCodecsAvailable() {
   return typeof VideoDecoder !== 'undefined' && typeof VideoEncoder !== 'undefined'
 }
 
-/** Compone el modo "fondo desenfocado" en un canvas de 1080×1920. */
-function makeBlurPad() {
-  const canvas = new OffscreenCanvas(VERTICAL_W, VERTICAL_H)
+/** Compone el modo "fondo desenfocado" en un lienzo W×H. */
+function makeBlurPad(W: number, H: number) {
+  const canvas = new OffscreenCanvas(W, H)
   const ctx = canvas.getContext('2d')!
   // El fondo se dibuja a 1/4 de resolución con desenfoque y se amplía: mismo aspecto, mucho más barato.
-  const small = new OffscreenCanvas(VERTICAL_W / 4, VERTICAL_H / 4)
+  const small = new OffscreenCanvas(Math.max(2, Math.round(W / 4)), Math.max(2, Math.round(H / 4)))
   const sctx = small.getContext('2d')!
   sctx.filter = 'blur(6px)'
 
   return (sample: VideoSample) => {
     const w = sample.displayWidth
     const h = sample.displayHeight
-    // Fondo: "cover" en el canvas pequeño.
     const cover = Math.max(small.width / w, small.height / h)
     const cw = w * cover
     const ch = h * cover
     sctx.drawImage(sample.toCanvasImageSource(), (small.width - cw) / 2, (small.height - ch) / 2, cw, ch)
     ctx.imageSmoothingQuality = 'high'
-    ctx.drawImage(small, 0, 0, VERTICAL_W, VERTICAL_H)
-    // Frente: "contain" centrado.
-    const contain = Math.min(VERTICAL_W / w, VERTICAL_H / h)
+    ctx.drawImage(small, 0, 0, W, H)
+    const contain = Math.min(W / w, H / h)
     const fw = Math.round((w * contain) / 2) * 2
     const fh = Math.round((h * contain) / 2) * 2
-    sample.draw(ctx, (VERTICAL_W - fw) / 2, (VERTICAL_H - fh) / 2, fw, fh)
+    sample.draw(ctx, (W - fw) / 2, (H - fh) / 2, fw, fh)
     return canvas
   }
 }
 
-function videoOptions(opts: ExportOptions): ConversionVideoOptions {
-  const base: ConversionVideoOptions = { codec: 'avc', quality: QUALITY_HIGH, forceTranscode: true }
-  if (opts.format === 'original') return base
-  if (opts.verticalMode === 'crop') return { ...base, width: VERTICAL_W, height: VERTICAL_H, fit: 'cover' }
-  return { ...base, process: makeBlurPad(), processedWidth: VERTICAL_W, processedHeight: VERTICAL_H }
+function quality(bitrate: Bitrate) {
+  return bitrate === 'auto' ? QUALITY_HIGH : new Quality({ bitrate: bitrate * 1_000_000 })
+}
+
+function videoOptions(geo: OutputGeometry, bitrate: Bitrate): ConversionVideoOptions {
+  const base: ConversionVideoOptions = {
+    codec: 'avc',
+    quality: quality(bitrate),
+    forceTranscode: true,
+    rotate: geo.rotation,
+    // La rotación se "hornea" en los fotogramas, como hace la vía FFmpeg.
+    allowTransformationMetadata: false,
+  }
+  if (geo.mode === 'blur') {
+    return { ...base, process: makeBlurPad(geo.outW, geo.outH), processedWidth: geo.outW, processedHeight: geo.outH }
+  }
+  return {
+    ...base,
+    ...(geo.crop ? { crop: geo.crop } : {}),
+    width: geo.outW,
+    height: geo.outH,
+    fit: 'fill',
+  }
 }
 
 export interface WebCodecsJob {
@@ -69,7 +86,8 @@ export function convertSegment(
   file: File,
   start: number,
   end: number,
-  opts: ExportOptions,
+  geo: OutputGeometry,
+  bitrate: Bitrate,
   onProgress: (p: number) => void,
 ): WebCodecsJob {
   let conversion: Conversion | null = null
@@ -93,7 +111,7 @@ export function convertSegment(
         output,
         tracks: 'primary',
         trim: { start, end },
-        video: videoOptions(opts),
+        video: videoOptions(geo, bitrate),
         audio: { codec: 'aac' },
         showWarnings: false,
       })

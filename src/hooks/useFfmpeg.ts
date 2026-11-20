@@ -24,13 +24,13 @@ export function useFfmpeg() {
   }, [])
 
   const runExport = useCallback(async () => {
-    const { file, segments, options, info: known, job } = useEditor.getState()
+    const { file, segments, settings, crop, info: known, job } = useEditor.getState()
     if (!file || segments.length === 0 || job.kind === 'running') return
     setJob({ kind: 'running', label: 'Cargando motor de video…', progress: 0 })
     // Si el análisis del archivo aún no terminó, se espera: decide qué motor usar (ffmpeg o WebCodecs).
     const info = known ?? (await probe(file).catch(() => null))
     try {
-      const results = await exportSegments(file, segments, options, info, (progress, label) =>
+      const results = await exportSegments(file, segments, settings, crop, info, (progress, label) =>
         setJob({ kind: 'running', label, progress }),
       )
       setJob({ kind: 'done', results })

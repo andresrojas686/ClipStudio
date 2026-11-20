@@ -196,6 +196,9 @@ export interface ProbeInfo {
   /** Índice absoluto del primer stream de video real (ignora portadas incrustadas). */
   videoStream: number | null
   videoCodec: string | null
+  /** Dimensiones de visualización (con la rotación de metadatos ya aplicada). */
+  width: number | null
+  height: number | null
 }
 
 /** Lee metadatos básicos del archivo a partir de la salida de `ffmpeg -i`. */
@@ -212,11 +215,18 @@ export async function probe(file: File): Promise<ProbeInfo> {
     }
     const dm = lines.map((l) => /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(l)).find(Boolean)
     // "Stream #0:1[0x2](und): Video: av1 (Main) ..." — se descartan las "(attached pic)".
-    const video = lines
-      .filter((l) => !/attached pic/.test(l))
-      .map((l) => /Stream #0:(\d+)\S*: Video: (\w+)/.exec(l))
-      .find(Boolean)
+    const videoLine = lines.find((l) => /Stream #0:\d+\S*: Video: /.test(l) && !/attached pic/.test(l))
+    const video = videoLine ? /Stream #0:(\d+)\S*: Video: (\w+)/.exec(videoLine) : null
+    const dims = videoLine ? /, (\d{2,5})x(\d{2,5})[\s,[]/.exec(videoLine) : null
+    // Videos de móvil: "displaymatrix: rotation of -90.00 degrees" → FFmpeg los rota al decodificar.
+    const rot = lines.map((l) => /rotation of (-?[\d.]+) degrees/.exec(l)).find(Boolean)
+    const quarter = rot ? Math.abs(Math.round(Number(rot[1]) / 90)) % 2 === 1 : false
+    let width = dims ? Number(dims[1]) : null
+    let height = dims ? Number(dims[2]) : null
+    if (quarter) [width, height] = [height, width]
     return {
+      width,
+      height,
       hasAudio: lines.some((l) => /Stream #\d+:\d+.*Audio:/.test(l)),
       duration: dm ? Number(dm[1]) * 3600 + Number(dm[2]) * 60 + Number(dm[3]) : null,
       videoStream: video ? Number(video[1]) : null,
