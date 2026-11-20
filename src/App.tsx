@@ -11,8 +11,8 @@ import { useEditor } from './store/editorStore'
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement
-      if (el.closest('input, textarea, select, [contenteditable="true"]')) return
+      const el = e.target
+      if (el instanceof Element && el.closest('input, textarea, select, [contenteditable="true"]')) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const s = useEditor.getState()
       if (!s.file || !s.duration) return

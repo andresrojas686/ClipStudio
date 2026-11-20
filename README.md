@@ -1,32 +1,55 @@
-# React + TypeScript + Vite
+# Editor de clips
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Aplicación web para cortar videos y exportarlos en formato original o vertical 9:16 (TikTok, Reels, Shorts).
+Todo el procesamiento ocurre en el navegador con [ffmpeg.wasm](https://ffmpegwasm.netlify.app/): el video nunca sale del dispositivo.
 
-Currently, two official plugins are available:
+## Uso
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Arrastra un video (MP4, MOV, AVI, MKV, WebM; recomendado ≤ 500 MB).
+2. Marca segmentos con **I** / **O** mientras reproduces, o con “Añadir segmento aquí”. Ajusta los bordes arrastrando las asas o escribiendo los tiempos.
+3. Elige formato y exporta:
+   - **Original · Rápido**: sin re-codificar (instantáneo, corta en el keyframe anterior, mismo contenedor).
+   - **Original · Preciso**: re-codifica a MP4 H.264/AAC, exacto al fotograma.
+   - **Vertical 9:16**: 1080×1920, *recorte central* o *fondo desenfocado*.
+   - Con varios segmentos: **clips separados** o **un solo video** unido en el orden de la lista.
 
-## React Compiler
+Atajos: `Espacio` reproducir/pausar · `I`/`O` inicio/fin · `←`/`→` fotograma (`Shift` = 1 s) · `Supr` borrar segmento seleccionado.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Si el navegador no puede reproducir el archivo (p. ej. AVI), se genera una vista previa ligera a 480p; la exportación usa siempre el original.
 
-## Expanding the Oxlint configuration
+## Desarrollo
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install      # también copia el núcleo de ffmpeg.wasm a public/ffmpeg
+npm run dev      # http://localhost:5173
+npm run lint
+npm run build    # salida en dist/
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Requiere Node 20+.
+
+## Despliegue
+
+Es un sitio estático (`dist/`). El servidor debe enviar estos headers (ya incluidos en `vercel.json` y `public/_headers` para Netlify/Cloudflare Pages):
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+## Estructura
+
+```
+src/
+├── components/   Uploader, VideoPlayer, Timeline, SegmentList, ExportPanel, ProgressBar
+├── hooks/        useFfmpeg (exportar/cancelar, estado del motor), useVideoState (reproductor ↔ store, proxy)
+├── lib/          ffmpegClient (carga, cola, montaje WORKERFS), ffmpegCommands (argumentos FFmpeg),
+│                 exporter (flujo de corte/unión), formatUtils, colors
+└── store/        editorStore (Zustand)
+```
+
+## Notas técnicas
+
+- Núcleo **single-thread** de ffmpeg.wasm: corre en su propio Worker, así que la interfaz no se bloquea.
+- El archivo de entrada se monta con **WORKERFS**: FFmpeg lo lee directamente del `File`, sin copiarlo a memoria.
+- La re-codificación en WebAssembly es lenta (orden de 2–4× la duración del clip en 9:16 a 1080p).
