@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useFfmpeg } from '../hooks/useFfmpeg'
+import { needsBrowserDecoder } from '../lib/exporter'
 import { isStreamCopy } from '../lib/ffmpegCommands'
 import { formatBytes, getExtension } from '../lib/formatUtils'
 import { useEditor, type ExportOptions } from '../store/editorStore'
@@ -55,6 +56,8 @@ export function ExportPanel() {
   const running = job.kind === 'running'
   const ext = file ? getExtension(file.name) : ''
   const copy = isStreamCopy(options)
+  const info = useEditor((s) => s.info)
+  const browserDecode = needsBrowserDecoder(info, options)
 
   return (
     <section className="flex flex-col gap-4">
@@ -101,8 +104,14 @@ export function ExportPanel() {
       <p className="text-xs text-zinc-500">
         Salida: {copy ? `.${ext} (mismo códec que el original)` : 'MP4 · H.264 + AAC'}
         {options.format === 'vertical' && ' · 1080×1920'}
-        {!copy && ' · re-codificar en el navegador puede tardar varias veces la duración del clip.'}
+        {!copy && !browserDecode && ' · re-codificar en el navegador puede tardar varias veces la duración del clip.'}
       </p>
+      {browserDecode && (
+        <p className="rounded-lg bg-sky-500/10 px-3 py-2 text-xs text-sky-200 ring-1 ring-sky-500/30">
+          Este video es <strong>{info?.videoCodec?.toUpperCase()}</strong>: se convertirá con el decodificador nativo del
+          navegador (WebCodecs) en lugar de ffmpeg.wasm.
+        </p>
+      )}
 
       {running ? (
         <div className="flex flex-col gap-2">

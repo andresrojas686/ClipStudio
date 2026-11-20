@@ -21,12 +21,15 @@ export const CROP_FILTER = `scale=${VERTICAL_W}:${VERTICAL_H}:force_original_asp
  * Blur-pad: fondo con el mismo video ampliado y desenfocado, video completo centrado encima.
  * El desenfoque se hace a 1/4 de resolución y luego se escala: mismo aspecto, mucho más rápido en wasm.
  */
-export const BLUR_FILTER =
-  `[0:v]split=2[bg][fg];` +
+export const blurFilter = (videoStream: number | null) =>
+  `[${videoMap(videoStream)}]split=2[bg][fg];` +
   `[bg]scale=${VERTICAL_W / 4}:${VERTICAL_H / 4}:force_original_aspect_ratio=increase,` +
   `crop=${VERTICAL_W / 4}:${VERTICAL_H / 4},boxblur=10:2,scale=${VERTICAL_W}:${VERTICAL_H}[bg2];` +
   `[fg]scale=${VERTICAL_W}:${VERTICAL_H}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2[fg2];` +
   `[bg2][fg2]overlay=(W-w)/2:(H-h)/2,setsar=1[v]`
+
+/** Selector del stream de video para -map / filtros. */
+const videoMap = (videoStream: number | null) => (videoStream === null ? '0:v:0' : `0:${videoStream}`)
 
 /** Ajusta dimensiones impares a pares (requisito de yuv420p). */
 const EVEN_FILTER = 'scale=trunc(iw/2)*2:trunc(ih/2)*2'
@@ -37,6 +40,8 @@ export interface CutSpec {
   start: number
   end: number
   hasAudio: boolean
+  /** Índice absoluto del stream de video (null = el primero). */
+  videoStream: number | null
 }
 
 /** ¿La exportación conserva el contenedor original (copia de streams) o produce MP4? */
@@ -50,23 +55,24 @@ export function outputExtension(opts: ExportOptions, sourceExt: string) {
 
 /** Argumentos para cortar (y convertir) un segmento. `-ss` va antes de `-i` para buscar rápido. */
 export function buildCutArgs(spec: CutSpec, opts: ExportOptions): string[] {
-  const { input, output, start, end, hasAudio } = spec
+  const { input, output, start, end, hasAudio, videoStream } = spec
+  const vMap = videoMap(videoStream)
   const seek = ['-ss', ffTime(start), '-i', input, '-t', ffTime(end - start)]
   const audioMap = hasAudio ? ['-map', '0:a:0'] : []
 
   if (isStreamCopy(opts)) {
     // Sin re-codificar: instantáneo, pero el corte cae en el keyframe anterior.
-    return [...seek, '-map', '0:v:0', ...audioMap, '-c', 'copy', '-avoid_negative_ts', 'make_zero', output]
+    return [...seek, '-map', vMap, ...audioMap, '-c', 'copy', '-avoid_negative_ts', 'make_zero', output]
   }
 
   const audio = hasAudio ? AAC : ['-an']
 
   if (opts.format === 'vertical' && opts.verticalMode === 'blur') {
-    return [...seek, '-filter_complex', BLUR_FILTER, '-map', '[v]', ...audioMap, ...X264, ...audio, ...MP4, output]
+    return [...seek, '-filter_complex', blurFilter(videoStream), '-map', '[v]', ...audioMap, ...X264, ...audio, ...MP4, output]
   }
 
   const vf = opts.format === 'vertical' ? CROP_FILTER : EVEN_FILTER
-  return [...seek, '-map', '0:v:0', ...audioMap, '-vf', vf, ...X264, ...audio, ...MP4, output]
+  return [...seek, '-map', vMap, ...audioMap, '-vf', vf, ...X264, ...audio, ...MP4, output]
 }
 
 /** Contenido del archivo de lista para el demuxer concat. */
@@ -80,10 +86,10 @@ export function buildConcatArgs(listPath: string, output: string, mp4: boolean):
 }
 
 /** Proxy de vista previa (H.264 480p) para formatos que el navegador no reproduce. */
-export function buildProxyArgs(input: string, output: string, hasAudio: boolean): string[] {
+export function buildProxyArgs(input: string, output: string, hasAudio: boolean, videoStream: number | null): string[] {
   return [
     '-i', input,
-    '-map', '0:v:0',
+    '-map', videoMap(videoStream),
     ...(hasAudio ? ['-map', '0:a:0', '-c:a', 'aac', '-b:a', '96k', '-ac', '2'] : ['-an']),
     '-vf', 'scale=-2:480',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30', '-pix_fmt', 'yuv420p',

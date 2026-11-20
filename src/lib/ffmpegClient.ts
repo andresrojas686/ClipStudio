@@ -63,9 +63,20 @@ export function getFFmpeg(): Promise<FFmpeg> {
   return p
 }
 
+/** Procesos externos a FFmpeg (p. ej. conversiones WebCodecs) que deben pararse al cancelar. */
+const terminateHooks = new Set<() => void>()
+export function onTerminate(fn: () => void) {
+  terminateHooks.add(fn)
+  return () => {
+    terminateHooks.delete(fn)
+  }
+}
+
 /** Detiene cualquier proceso en curso. El siguiente uso recarga el motor. */
 export function terminate() {
   generation++
+  terminateHooks.forEach((fn) => fn())
+  terminateHooks.clear()
   if (instance) instance.terminate()
   instance = null
   loading = null
@@ -158,15 +169,37 @@ export function withFFmpeg<T>(file: File, job: (ctx: RunContext) => Promise<T>):
         await ff.deleteFile(path).catch(() => {})
       },
     }
-    return job(ctx)
+    try {
+      return await job(ctx)
+    } catch (e) {
+      // Un fallo de FFmpeg suele terminar en abort() del módulo wasm y lo deja inutilizable:
+      // se recarga el motor para que el siguiente intento funcione.
+      if (!(e instanceof CancelledError) && myGen === generation) terminate()
+      throw e
+    }
   }
   const result = queue.then(run, run)
   queue = result.catch(() => {})
   return result
 }
 
-/** Lee metadatos básicos del archivo (audio, duración) a partir de la salida de `ffmpeg -i`. */
-export async function probe(file: File): Promise<{ hasAudio: boolean; duration: number | null }> {
+/**
+ * Códecs de video que este núcleo de ffmpeg.wasm no puede decodificar por software.
+ * AV1: el decodificador nativo `av1` solo funciona con aceleración por hardware y el núcleo no trae libdav1d.
+ * Con ellos solo es posible el corte sin re-codificar (copia de streams).
+ */
+export const UNDECODABLE_CODECS = ['av1']
+
+export interface ProbeInfo {
+  hasAudio: boolean
+  duration: number | null
+  /** Índice absoluto del primer stream de video real (ignora portadas incrustadas). */
+  videoStream: number | null
+  videoCodec: string | null
+}
+
+/** Lee metadatos básicos del archivo a partir de la salida de `ffmpeg -i`. */
+export async function probe(file: File): Promise<ProbeInfo> {
   return withFFmpeg(file, async ({ ff, input }) => {
     const lines: string[] = []
     const onLog = ({ message }: LogEvent) => lines.push(message)
@@ -178,9 +211,16 @@ export async function probe(file: File): Promise<{ hasAudio: boolean; duration: 
       ff.off('log', onLog)
     }
     const dm = lines.map((l) => /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(l)).find(Boolean)
+    // "Stream #0:1[0x2](und): Video: av1 (Main) ..." — se descartan las "(attached pic)".
+    const video = lines
+      .filter((l) => !/attached pic/.test(l))
+      .map((l) => /Stream #0:(\d+)\S*: Video: (\w+)/.exec(l))
+      .find(Boolean)
     return {
       hasAudio: lines.some((l) => /Stream #\d+:\d+.*Audio:/.test(l)),
       duration: dm ? Number(dm[1]) * 3600 + Number(dm[2]) * 60 + Number(dm[3]) : null,
+      videoStream: video ? Number(video[1]) : null,
+      videoCodec: video ? video[2] : null,
     }
   })
 }

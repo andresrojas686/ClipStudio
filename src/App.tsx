@@ -71,6 +71,7 @@ export default function App() {
   useFfmpegStatus()
   useShortcuts()
   const file = useEditor((s) => s.file)
+  const info = useEditor((s) => s.info)
   const { preload } = useFfmpeg()
 
   // Carga perezosa: el motor (~30 MB) solo se descarga cuando hay un video.
@@ -87,6 +88,7 @@ export default function App() {
         {file && (
           <span className="hidden min-w-0 truncate text-sm text-zinc-400 sm:inline" title={file.name}>
             {file.name} · {formatBytes(file.size)}
+            {info?.videoCodec && ` · ${info.videoCodec.toUpperCase()}`}
           </span>
         )}
         <div className="ml-auto flex items-center gap-3">

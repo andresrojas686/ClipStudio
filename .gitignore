@@ -25,3 +25,6 @@ dist-ssr
 
 # núcleo ffmpeg.wasm copiado en postinstall
 public/ffmpeg/
+
+# videos de prueba locales
+test-media/

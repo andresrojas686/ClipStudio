@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ProbeInfo } from '../lib/ffmpegClient'
 import { MIN_SEGMENT_SECONDS } from '../lib/formatUtils'
 
 export interface Segment {
@@ -42,7 +43,7 @@ interface EditorState {
   proxyState: 'none' | 'building' | 'failed'
   proxyProgress: number
   duration: number
-  hasAudio: boolean | null
+  info: ProbeInfo | null
 
   // Reproductor
   videoEl: HTMLVideoElement | null
@@ -66,7 +67,7 @@ interface EditorState {
   setPreview: (url: string, isProxy: boolean) => void
   setProxyState: (s: EditorState['proxyState'], progress?: number) => void
   setDuration: (d: number) => void
-  setHasAudio: (v: boolean) => void
+  setInfo: (info: ProbeInfo) => void
   setVideoEl: (el: HTMLVideoElement | null) => void
   setCurrentTime: (t: number) => void
   setPlaying: (p: boolean) => void
@@ -121,7 +122,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   proxyState: 'none',
   proxyProgress: 0,
   duration: 0,
-  hasAudio: null,
+  info: null,
 
   videoEl: null,
   currentTime: 0,
@@ -149,7 +150,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       proxyState: 'none',
       proxyProgress: 0,
       duration: 0,
-      hasAudio: null,
+      info: null,
       currentTime: 0,
       playing: false,
       playUntil: null,
@@ -167,7 +168,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setProxyState: (proxyState, proxyProgress = 0) => set({ proxyState, proxyProgress }),
   setDuration: (duration) => set({ duration }),
-  setHasAudio: (hasAudio) => set({ hasAudio }),
+  setInfo: (info) => set({ info }),
   setVideoEl: (videoEl) => set({ videoEl }),
   setCurrentTime: (currentTime) => set({ currentTime }),
   setPlaying: (playing) => set({ playing }),

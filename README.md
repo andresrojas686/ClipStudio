@@ -53,3 +53,8 @@ src/
 - Núcleo **single-thread** de ffmpeg.wasm: corre en su propio Worker, así que la interfaz no se bloquea.
 - El archivo de entrada se monta con **WORKERFS**: FFmpeg lo lee directamente del `File`, sin copiarlo a memoria.
 - La re-codificación en WebAssembly es lenta (orden de 2–4× la duración del clip en 9:16 a 1080p).
+- **Videos AV1** (habituales en descargas de YouTube): el núcleo de ffmpeg.wasm no puede decodificarlos
+  (su decodificador `av1` exige aceleración por hardware y no incluye libdav1d). Para ellos la conversión se hace
+  con WebCodecs vía [mediabunny](https://mediabunny.dev/) (`src/lib/webcodecsExporter.ts`), que usa el
+  decodificador/codificador nativo del navegador. Requiere Chrome o Edge recientes. El corte “Rápido” sigue usando FFmpeg.
+- Tras cualquier fallo de FFmpeg el motor se recarga automáticamente (un `abort()` del wasm lo deja inutilizable).

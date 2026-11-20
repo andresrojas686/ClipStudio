@@ -71,7 +71,7 @@ export function useVideoState() {
     const st = useEditor.getState
     const probed = probe(file).then(
       (info) => {
-        if (alive && st().file === file) st().setHasAudio(info.hasAudio)
+        if (alive && st().file === file) st().setInfo(info)
         return info
       },
       () => null,
@@ -85,7 +85,7 @@ export function useVideoState() {
       try {
         const info = await probed
         if (info?.duration) st().setDuration(info.duration)
-        const url = await buildPreviewProxy(file, info?.hasAudio ?? true, info?.duration ?? null, (p) => {
+        const url = await buildPreviewProxy(file, info, (p) => {
           if (alive) st().setProxyState('building', p)
         })
         if (!alive || st().file !== file) {
