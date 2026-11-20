@@ -9,7 +9,6 @@ import {
   outputExtension,
 } from './ffmpegCommands'
 import { getBaseName, getExtension } from './formatUtils'
-import { convertSegment } from './webcodecsExporter'
 
 export type ProgressFn = (progress: number, label: string) => void
 
@@ -65,6 +64,8 @@ export async function exportSegments(
   const browserDecode = needsBrowserDecoder(info, opts)
   const hasAudio = info?.hasAudio ?? true
   const videoStream = info?.videoStream ?? null
+  // mediabunny solo se descarga cuando un video lo necesita.
+  const { convertSegment } = browserDecode ? await import('./webcodecsExporter') : { convertSegment: null }
 
   return withFFmpeg(file, async ({ input, exec, read, write, remove }) => {
     const results: ExportResult[] = []
@@ -84,7 +85,7 @@ export async function exportSegments(
         report(0)
 
         let data: Uint8Array
-        if (browserDecode) {
+        if (convertSegment) {
           const job = convertSegment(file, seg.start, seg.end, opts, (p) => report(p * dur))
           const off = onTerminate(job.cancel)
           try {
