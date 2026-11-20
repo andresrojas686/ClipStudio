@@ -1,17 +1,21 @@
 # Editor de clips
 
-Aplicación web para cortar videos y exportarlos en formato original o vertical 9:16 (TikTok, Reels, Shorts).
-Todo el procesamiento ocurre en el navegador con [ffmpeg.wasm](https://ffmpegwasm.netlify.app/): el video nunca sale del dispositivo.
+Aplicación web para cortar videos y exportarlos para redes sociales (TikTok, Reels, Shorts, Stories, Instagram, YouTube).
+Todo el procesamiento ocurre en el navegador con [ffmpeg.wasm](https://ffmpegwasm.netlify.app/) y WebCodecs: el video nunca sale del dispositivo.
 
 ## Uso
 
 1. Arrastra un video (MP4, MOV, AVI, MKV, WebM; recomendado ≤ 500 MB).
 2. Marca segmentos con **I** / **O** mientras reproduces, o con “Añadir segmento aquí”. Ajusta los bordes arrastrando las asas o escribiendo los tiempos.
-3. Elige formato y exporta:
-   - **Original · Rápido**: sin re-codificar (instantáneo, corta en el keyframe anterior, mismo contenedor).
-   - **Original · Preciso**: re-codifica a MP4 H.264/AAC, exacto al fotograma.
-   - **Vertical 9:16**: 1080×1920, *recorte central* o *fondo desenfocado*.
+   La línea de tiempo muestra la **forma de onda** del audio para encontrar los cortes.
+3. Elige el **destino** (preset) o ajusta a mano:
+   - **Encuadre**: proporción (original, 9:16, 4:5, 1:1, 16:9 o libre), *recortar* o *fondo desenfocado*,
+     y **rotación** en pasos de 90°. En modo recorte, arrastra y redimensiona el recuadro sobre el video.
+   - **Calidad**: resolución de salida (480p–4K u original) y bitrate (automático o 2–16 Mbps).
+   - **Corte** (solo sin cambios de encuadre ni calidad): *Rápido* sin re-codificar, o *Preciso* al fotograma.
    - Con varios segmentos: **clips separados** o **un solo video** unido en el orden de la lista.
+4. **Exportar** procesa al momento; **+ A la cola** guarda los ajustes actuales como un trabajo, para exportar
+   los mismos segmentos en varios formatos de una vez (“Procesar cola”). Cada trabajo tiene su progreso y sus descargas.
 
 Atajos: `Espacio` reproducir/pausar · `I`/`O` inicio/fin · `←`/`→` fotograma (`Shift` = 1 s) · `Supr` borrar segmento seleccionado.
 
@@ -41,10 +45,13 @@ Cross-Origin-Embedder-Policy: require-corp
 
 ```
 src/
-├── components/   Uploader, VideoPlayer, Timeline, SegmentList, ExportPanel, ProgressBar
-├── hooks/        useFfmpeg (exportar/cancelar, estado del motor), useVideoState (reproductor ↔ store, proxy)
+├── components/   Uploader, VideoPlayer, CropOverlay, Timeline, Waveform, SegmentList,
+│                 ExportPanel, ExportSettingsPanel, ExportQueue, ProgressBar
+├── hooks/        useFfmpeg (cola de exportación, estado del motor), useVideoState (reproductor ↔ store, proxy),
+│                 useWaveform
 ├── lib/          ffmpegClient (carga, cola, montaje WORKERFS), ffmpegCommands (argumentos FFmpeg),
-│                 exporter (flujo de corte/unión), formatUtils, colors
+│                 exporter (flujo de corte/unión), webcodecsExporter, presets, geometry, waveform,
+│                 formatUtils, colors
 └── store/        editorStore (Zustand)
 ```
 

@@ -2,6 +2,7 @@ import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { segmentColor } from '../lib/colors'
 import { MIN_SEGMENT_SECONDS, formatTime, rulerStep } from '../lib/formatUtils'
 import { neighborBounds, useEditor } from '../store/editorStore'
+import { Waveform } from './Waveform'
 
 type Drag = { kind: 'seek' } | { kind: 'start' | 'end'; id: string }
 
@@ -100,6 +101,7 @@ export function Timeline() {
         {ticks.map((t) => (
           <div key={t} className="absolute top-0 h-full w-px bg-zinc-800" style={{ left: pct(t) }} />
         ))}
+        <Waveform />
 
         {segments.map((seg, i) => {
           const color = segmentColor(i)
