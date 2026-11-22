@@ -28,3 +28,6 @@ public/ffmpeg/
 
 # videos de prueba locales
 test-media/
+
+# yt-dlp descargado en postinstall
+bin/
