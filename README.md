@@ -12,6 +12,7 @@ Instagram Stories, Instagram Feed, YouTube). Todo el procesamiento ocurre **en t
 - [Actualizar a la última versión](#actualizar-a-la-última-versión)
 - [Solución de problemas](#solución-de-problemas)
 - [Cómo se usa](#cómo-se-usa)
+- [Importar desde YouTube](#importar-desde-youtube)
 - [Comandos disponibles](#comandos-disponibles)
 - [Tecnologías](#tecnologías)
 - [Estructura del proyecto](#estructura-del-proyecto)
@@ -23,6 +24,7 @@ Instagram Stories, Instagram Feed, YouTube). Todo el procesamiento ocurre **en t
 ## Características
 
 - **Formatos de entrada:** MP4, MOV, AVI, MKV y WebM (incluidos videos AV1 descargados de YouTube).
+- **Importar desde YouTube:** pega un link y el video se descarga en H.264 listo para cortar (solo en local, con yt-dlp).
 - **Dividir en N clips:** al cargar un video eliges cuántos clips quieres y ves antes el inicio, fin y duración de cada uno.
 - **Segmentos a mano:** línea de tiempo con forma de onda del audio, marcas de inicio/fin (`I` / `O`) y asas arrastrables.
 - **Destinos predefinidos:** TikTok, Reels, Shorts, Stories (9:16), Instagram Feed (4:5), Cuadrado (1:1), YouTube (16:9) u Original.
@@ -83,7 +85,9 @@ npm install
 ```
 
 Tarda uno o dos minutos la primera vez. Al terminar copia automáticamente el motor de video (ffmpeg.wasm, ~30 MB)
-a `public/ffmpeg/`; verás el mensaje `ffmpeg core copiado a public/ffmpeg`.
+a `public/ffmpeg/`; verás el mensaje `ffmpeg core copiado a public/ffmpeg`. También descarga
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) a `bin/` (~20 MB) y un ffmpeg nativo (~80 MB) para
+[importar desde YouTube](#importar-desde-youtube); si no hay conexión solo muestra un aviso y el resto de la app funciona igual.
 
 ### 4. Arranca la aplicación
 
@@ -135,11 +139,14 @@ Si descargaste el ZIP, descarga uno nuevo y repite los pasos 3 a 5.
 | La cabecera muestra **Error del motor** o la exportación no empieza | Falta el motor de video. Ejecuta `node scripts/copy-ffmpeg-core.mjs` y recarga la página. |
 | Un video AV1 no se puede exportar | Usa Chrome o Edge actualizados (necesitan WebCodecs). Firefox y Safari antiguos no lo soportan. |
 | No funciona al abrirla desde otro equipo de la red (`http://192.168.x.x:5173`) | El navegador solo permite WebCodecs en `localhost` o con HTTPS. Úsala en el mismo PC, o publícala con HTTPS (ver [Publicar en internet](#publicar-en-internet)). |
+| No aparece la sección **o desde YouTube** | Solo existe con `npm run dev` o `npm run preview` (no en un sitio publicado). Si dice que falta yt-dlp, ejecuta `npm run update-ytdlp` y reinicia. |
+| YouTube: *yt-dlp no pudo leer el video; probablemente está desactualizado* | YouTube cambia a menudo. Ejecuta `npm run update-ytdlp` y reinicia `npm run dev`. |
+| YouTube: *Error de certificado HTTPS* | Un antivirus o proxy inspecciona el tráfico HTTPS. La app ya usa los certificados del sistema; si persiste, desactiva la inspección HTTPS para `youtube.com`. |
 | El navegador se queda sin memoria con videos muy grandes | Cierra otras pestañas; por encima de ~500 MB el rendimiento depende de la RAM disponible. |
 
 ## Cómo se usa
 
-1. **Carga un video:** arrástralo a la ventana o haz clic para elegirlo.
+1. **Carga un video:** arrástralo a la ventana, haz clic para elegirlo o [pega un link de YouTube](#importar-desde-youtube).
 2. **Crea los segmentos:**
    - Al cargar, la app ofrece **dividir el video en N clips iguales**: eliges cuántos y ves el inicio, fin y duración
      de cada uno antes de aplicar (también desde **✂ Dividir en N clips…**).
@@ -162,15 +169,33 @@ Si descargaste el ZIP, descarga uno nuevo y repite los pasos 3 a 5.
 Si el navegador no puede reproducir el archivo (p. ej. AVI), se genera una vista previa ligera a 480p;
 la exportación usa siempre el original.
 
+## Importar desde YouTube
+
+Debajo de la zona de carga (o con el botón **Desde YouTube** cuando ya hay un video abierto):
+
+1. Pega el link (`youtube.com/watch?v=…`, `youtu.be/…` o `youtube.com/shorts/…`) y pulsa **Buscar**.
+2. Verás la miniatura, el título y la duración. Elige la **calidad** (360p a 1080p).
+3. Pulsa **Descargar y editar**. Se muestra el progreso (video, audio, unión y carga en el editor) y puedes cancelar.
+4. El video se abre en el editor como cualquier archivo, y te ofrece dividirlo en N clips.
+
+Cómo funciona: el navegador no puede descargar de YouTube por sí solo, así que `npm run dev` / `npm run preview`
+incluyen una pequeña API local (`server/youtubePlugin.ts`) que ejecuta **yt-dlp** en tu PC. Se pide H.264 + AAC en MP4
+para que la exportación sea rápida; el archivo temporal se borra en cuanto pasa al navegador.
+
+- Funciona **solo en local**: un sitio estático publicado no tiene esa API y la sección no aparece.
+- Si YouTube cambia y deja de funcionar, actualiza yt-dlp con `npm run update-ytdlp`.
+- Usa esta función con videos propios o sobre los que tengas permiso.
+
 ## Comandos disponibles
 
 | Comando | Qué hace |
 |---|---|
-| `npm install` | Instala las dependencias y copia el motor de video a `public/ffmpeg/` |
+| `npm install` | Instala las dependencias, copia el motor de video a `public/ffmpeg/` y descarga yt-dlp a `bin/` |
 | `npm run dev` | Arranca la app en modo desarrollo en <http://localhost:5173> (se recarga al editar el código) |
 | `npm run build` | Compila la versión optimizada en `dist/` |
 | `npm run preview` | Sirve la versión compilada en <http://localhost:4173> |
 | `npm run lint` | Revisa el código con oxlint |
+| `npm run update-ytdlp` | Descarga la última versión de yt-dlp (si falla la importación desde YouTube) |
 
 ## Tecnologías
 
@@ -178,26 +203,31 @@ la exportación usa siempre el original.
 - **Tailwind CSS** (estilos) y **Zustand** (estado global)
 - **ffmpeg.wasm** (`@ffmpeg/ffmpeg`, `@ffmpeg/core`): corte y conversión dentro del navegador
 - **mediabunny** (WebCodecs): conversión de videos AV1 y análisis del audio para la forma de onda
+- **yt-dlp** + **ffmpeg-static**: importación desde YouTube a través de un plugin de Vite (solo en local)
 
 ## Estructura del proyecto
 
 ```
 ClipStudio/
+├── bin/                             yt-dlp (se descarga con npm install; no se versiona)
 ├── docs/
 │   └── plan-editor-clips-video.md   Plan del proyecto y fases
 ├── public/
 │   ├── _headers                     Headers COOP/COEP para Netlify / Cloudflare Pages
 │   └── ffmpeg/                      Motor ffmpeg.wasm (se genera con npm install; no se versiona)
 ├── scripts/
-│   └── copy-ffmpeg-core.mjs         Copia el motor desde node_modules a public/ffmpeg
+│   ├── copy-ffmpeg-core.mjs         Copia el motor desde node_modules a public/ffmpeg
+│   └── fetch-yt-dlp.mjs             Descarga yt-dlp a bin/ (y asegura ffmpeg-static)
+├── server/
+│   └── youtubePlugin.ts             API local /api/yt (yt-dlp) para importar desde YouTube
 ├── src/
 │   ├── components/   Uploader, VideoPlayer, CropOverlay, Timeline, Waveform, SegmentList, SplitDialog,
-│   │                 ExportPanel, ExportSettingsPanel, ExportQueue, ProgressBar
+│   │                 ExportPanel, ExportSettingsPanel, ExportQueue, ProgressBar, YoutubeImport
 │   ├── hooks/        useFfmpeg (cola de exportación, estado del motor), useVideoState (reproductor ↔ store,
-│   │                 vista previa), useWaveform
+│   │                 vista previa), useWaveform, useYoutubeAvailable
 │   ├── lib/          ffmpegClient (carga, cola, montaje WORKERFS), ffmpegCommands (argumentos FFmpeg),
 │   │                 exporter (corte/unión), webcodecsExporter, presets, geometry, splitClips, waveform,
-│   │                 formatUtils, colors
+│   │                 formatUtils, colors, youtube (cliente de /api/yt)
 │   └── store/        editorStore (Zustand)
 ├── index.html
 ├── package.json
@@ -216,6 +246,9 @@ Cross-Origin-Embedder-Policy: require-corp
 ```
 
 Debe servirse por **HTTPS** (todos esos servicios lo hacen por defecto).
+
+La importación desde YouTube **no** está disponible en un sitio publicado (necesita yt-dlp en el equipo); la sección
+se oculta sola.
 
 ## Notas técnicas
 
@@ -239,6 +272,7 @@ El plan completo está en [`docs/plan-editor-clips-video.md`](docs/plan-editor-c
 | 1 (MVP) | Carga, reproductor, línea de tiempo, segmentos, exportación original y 9:16 | ✅ Hecha |
 | 2 | Forma de onda, resolución/bitrate, rotación y encuadre, cola, presets | ✅ Hecha (backend > 1 GB pospuesto) |
 | 2.5 | Dividir el video en N clips iguales con vista previa | ✅ Hecha |
+| 2.6 | Importar un video desde un link de YouTube (local, con yt-dlp) | ✅ Hecha |
 | 3 | Filtros, texto y stickers, transiciones, guardado de proyectos | Pendiente |
 
 ## Licencia

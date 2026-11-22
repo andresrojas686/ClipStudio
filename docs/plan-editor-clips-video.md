@@ -100,6 +100,17 @@ Aplicación web que permite al usuario cargar un video (**MP4, MOV, AVI, MKV, We
   - Si la duración no se divide exacta, el reparto se hace con precisión de milisegundos (p. ej. 28:28 en 7 clips → 4:04 cada uno) y el último clip termina justo al final del video
   - Videos de más de una hora se muestran como h:mm:ss
 
+### Fase 2.6 — Importar desde un link de YouTube
+- [x] Campo "Pega un link de YouTube" en la pantalla de carga, y botón "Desde YouTube" con un video ya abierto
+- [x] Vista previa del video (miniatura, título, canal, duración) y selector de calidad (360p–1080p)
+- [x] Descarga con progreso (video, audio, unión, carga en el editor) y cancelación
+- [x] El video entra al flujo normal: dividir en N clips, segmentos, presets, cola y exportación
+- Notas:
+  - Solo uso local: un plugin de Vite (`server/youtubePlugin.ts`) expone `/api/yt/*` en `npm run dev` / `npm run preview` y ejecuta **yt-dlp**; en un build estático la sección se oculta
+  - yt-dlp se descarga solo en `npm install` (`scripts/fetch-yt-dlp.mjs`); `npm run update-ytdlp` lo actualiza. ffmpeg nativo vía `ffmpeg-static` para unir video y audio
+  - Se pide H.264 + AAC en MP4 para que la exportación use el camino rápido de ffmpeg.wasm
+  - Usa los certificados del sistema (compatible con antivirus que inspeccionan HTTPS)
+
 ### Fase 3
 - [ ] Filtros y ajustes básicos (brillo, contraste, saturación)
 - [ ] Texto superpuesto y stickers
