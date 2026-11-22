@@ -112,9 +112,21 @@ Aplicación web que permite al usuario cargar un video (**MP4, MOV, AVI, MKV, We
   - Se pide H.264 + AAC en MP4 para que la exportación use el camino rápido de ffmpeg.wasm
   - Usa los certificados del sistema (compatible con antivirus que inspeccionan HTTPS)
 
+### Fase 2.7 — Cajas de texto sobre el video
+- [x] Añadir varios textos (mensajes) al video; cada uno con su **inicio y fin** (campos, con botón "posición actual")
+- [x] Colocar la caja en cualquier parte del cuadro **arrastrándola**; **esquinas** = tamaño, **lados** = ancho (el texto se re-ajusta)
+- [x] Estilo: fuente (Montserrat, Arial, Impact, Georgia, Courier), tamaño, negrita, alineación, color, fondo caja/contorno y su color
+- [x] Posiciones rápidas (arriba, centro, abajo) y marcas de los rangos en la línea de tiempo
+- [x] Los textos se graban en el video exportado (ffmpeg.wasm y WebCodecs), también en la cola y al unir segmentos
+- Notas:
+  - Posición y tamaño relativos al **cuadro de salida**: el mismo texto sirve en 9:16, 4:5 o 16:9
+  - Un único renderizador en canvas para vista previa y exportación (WYSIWYG); en ffmpeg cada texto va como PNG con `overlay` + `enable=between(t,a,b)`
+  - Con *fondo desenfocado* la vista previa toma la proporción de salida con bandas desenfocadas, para poder poner textos en ellas
+  - Si un segmento tiene textos, el corte "Rápido" pasa a "Preciso"
+
 ### Fase 3
 - [ ] Filtros y ajustes básicos (brillo, contraste, saturación)
-- [ ] Texto superpuesto y stickers
+- [ ] Stickers (el texto superpuesto se hizo en la Fase 2.7)
 - [ ] Transiciones entre segmentos
 - [ ] Guardado de proyectos en el navegador (IndexedDB)
 

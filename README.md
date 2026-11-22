@@ -26,6 +26,7 @@ Instagram Stories, Instagram Feed, YouTube). Todo el procesamiento ocurre **en t
 - **Formatos de entrada:** MP4, MOV, AVI, MKV y WebM (incluidos videos AV1 descargados de YouTube).
 - **Importar desde YouTube:** pega un link y el video se descarga en H.264 listo para cortar (solo en local, con yt-dlp).
 - **Dividir en N clips:** al cargar un video eliges cuántos clips quieres y ves antes el inicio, fin y duración de cada uno.
+- **Textos sobre el video:** mensajes que arrastras a cualquier parte del cuadro, con tamaño ajustable, fuente, color, fondo o contorno, y un rango de tiempo propio. Se graban en el video exportado.
 - **Segmentos a mano:** línea de tiempo con forma de onda del audio, marcas de inicio/fin (`I` / `O`) y asas arrastrables.
 - **Destinos predefinidos:** TikTok, Reels, Shorts, Stories (9:16), Instagram Feed (4:5), Cuadrado (1:1), YouTube (16:9) u Original.
 - **Encuadre:** recorte manual con un recuadro sobre el video, fondo desenfocado, proporción libre y rotación en pasos de 90°.
@@ -160,11 +161,20 @@ Si descargaste el ZIP, descarga uno nuevo y repite los pasos 3 a 5.
    - **Corte** (solo sin cambios de encuadre ni calidad): *Rápido* sin re-codificar (corta en el fotograma clave anterior)
      o *Preciso* al fotograma.
    - Con varios segmentos: **clips separados** o **un solo video** unido en el orden de la lista.
-4. **Exporta:** **Exportar** procesa al momento; **+ A la cola** guarda los ajustes como un trabajo para exportar los
+4. **Añade textos** (opcional), en la sección **Textos**:
+   - **+ Añadir texto** crea uno en la posición actual del video, durante 3 s.
+   - Arrástralo sobre el video para colocarlo. Las **esquinas** cambian el tamaño y los **lados** el ancho de la caja
+     (el texto se ajusta solo).
+   - En el panel: mensaje, **inicio y fin** (⟲ usa la posición actual), fuente, tamaño, negrita, alineación, color,
+     fondo (*caja* semitransparente o *contorno*) y posiciones rápidas (arriba, centro, abajo).
+   - La posición es relativa al cuadro de salida: el mismo texto sirve en 9:16, 4:5 o 16:9. Con *fondo desenfocado*
+     la vista previa muestra las bandas, así que puedes poner textos en ellas.
+   - Los textos se graban en el video. Si un segmento tiene textos, el corte *Rápido* pasa a *Preciso* (hay que re-codificar).
+5. **Exporta:** **Exportar** procesa al momento; **+ A la cola** guarda los ajustes como un trabajo para exportar los
    mismos segmentos en varios formatos de una vez (**Procesar cola**). Descarga cada archivo al terminar.
 
 **Atajos de teclado:** `Espacio` reproducir/pausar · `I` / `O` marcar inicio/fin · `←` / `→` fotograma
-(`Shift` = 1 s) · `Supr` borrar el segmento seleccionado.
+(`Shift` = 1 s) · `Supr` borrar el segmento o texto seleccionado.
 
 Si el navegador no puede reproducir el archivo (p. ej. AVI), se genera una vista previa ligera a 480p;
 la exportación usa siempre el original.
@@ -225,12 +235,13 @@ ClipStudio/
 │   └── youtubePlugin.ts             API local /api/yt (yt-dlp) para importar desde YouTube
 ├── src/
 │   ├── components/   Uploader, VideoPlayer, CropOverlay, Timeline, Waveform, SegmentList, SplitDialog,
-│   │                 ExportPanel, ExportSettingsPanel, ExportQueue, ProgressBar, YoutubeImport
+│   │                 ExportPanel, ExportSettingsPanel, ExportQueue, ProgressBar, YoutubeImport,
+│   │                 TextOverlayLayer, TextPanel, TimeInput
 │   ├── hooks/        useFfmpeg (cola de exportación, estado del motor), useVideoState (reproductor ↔ store,
 │   │                 vista previa), useWaveform, useYoutubeAvailable
 │   ├── lib/          ffmpegClient (carga, cola, montaje WORKERFS), ffmpegCommands (argumentos FFmpeg),
 │   │                 exporter (corte/unión), webcodecsExporter, presets, geometry, splitClips, waveform,
-│   │                 formatUtils, colors, youtube (cliente de /api/yt)
+│   │                 formatUtils, colors, youtube (cliente de /api/yt), textOverlay, textRender
 │   └── store/        editorStore (Zustand)
 ├── index.html
 ├── package.json
@@ -263,6 +274,9 @@ se oculta sola.
   [mediabunny](https://mediabunny.dev/) (`src/lib/webcodecsExporter.ts`), usando el decodificador y codificador
   nativos del navegador. El corte *Rápido* sigue usando FFmpeg.
 - Tras cualquier fallo de FFmpeg el motor se recarga automáticamente (un `abort()` del wasm lo deja inutilizable).
+- **Textos:** un único renderizador en canvas (`src/lib/textRender.ts`) dibuja la vista previa y la exportación.
+  En ffmpeg.wasm cada texto se rasteriza a PNG y se superpone con `overlay` + `enable=between(t,a,b)`; en la vía
+  WebCodecs se dibuja sobre cada fotograma. La fuente Montserrat va incluida (@fontsource, licencia OFL).
 - La forma de onda se calcula con el decodificador de audio del navegador, por partes; para contenedores que
   mediabunny no lee (p. ej. AVI) se usa FFmpeg como respaldo.
 
@@ -276,7 +290,8 @@ El plan completo está en [`docs/plan-editor-clips-video.md`](docs/plan-editor-c
 | 2 | Forma de onda, resolución/bitrate, rotación y encuadre, cola, presets | ✅ Hecha (backend > 1 GB pospuesto) |
 | 2.5 | Dividir el video en N clips iguales con vista previa | ✅ Hecha |
 | 2.6 | Importar un video desde un link de YouTube (local, con yt-dlp) | ✅ Hecha |
-| 3 | Filtros, texto y stickers, transiciones, guardado de proyectos | Pendiente |
+| 2.7 | Cajas de texto sobre el video, con posición, tamaño, estilo y rango de tiempo | ✅ Hecha |
+| 3 | Filtros, stickers, transiciones, guardado de proyectos | Pendiente |
 
 ## Licencia
 
