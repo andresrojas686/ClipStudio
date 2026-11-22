@@ -67,7 +67,7 @@ export function YoutubeImport({ onDone }: { onDone?: () => void }) {
     cancelRef.current = job.cancel
     try {
       const file = await job.promise
-      setFile(file)
+      setFile(file, 'youtube')
       onDone?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

@@ -50,6 +50,23 @@ function useShortcuts() {
   }, [])
 }
 
+/** Descarga el video importado de YouTube (solo vive en la memoria del navegador). */
+function SaveOriginalButton({ file }: { file: File }) {
+  const save = () => {
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.name
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+  return (
+    <button type="button" className="btn-secondary" onClick={save} title="Descarga el video completo de YouTube a tu carpeta de Descargas">
+      Guardar original
+    </button>
+  )
+}
+
 function EngineBadge() {
   const engine = useEditor((s) => s.engine)
   const error = useEditor((s) => s.engineError)
@@ -72,6 +89,7 @@ export default function App() {
   useFfmpegStatus()
   useShortcuts()
   const file = useEditor((s) => s.file)
+  const fileSource = useEditor((s) => s.fileSource)
   const info = useEditor((s) => s.info)
   const { preload } = useFfmpeg()
 
@@ -101,6 +119,7 @@ export default function App() {
         )}
         <div className="ml-auto flex items-center gap-3">
           <EngineBadge />
+          {file && fileSource === 'youtube' && <SaveOriginalButton file={file} />}
           {file && <Uploader compact />}
         </div>
       </header>

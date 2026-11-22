@@ -44,6 +44,8 @@ export interface QueueJob {
 interface EditorState {
   // Video fuente
   file: File | null
+  /** De dónde vino el archivo: 'youtube' habilita "Guardar original" (solo está en memoria). */
+  fileSource: 'local' | 'youtube'
   previewUrl: string | null
   isProxy: boolean
   proxyState: 'none' | 'building' | 'failed'
@@ -74,7 +76,7 @@ interface EditorState {
   queue: QueueJob[]
   queueRunning: boolean
 
-  setFile: (file: File | null) => void
+  setFile: (file: File | null, source?: 'local' | 'youtube') => void
   setPreview: (url: string, isProxy: boolean) => void
   setProxyState: (s: EditorState['proxyState'], progress?: number) => void
   setDuration: (d: number) => void
@@ -141,6 +143,7 @@ const finished = (j: QueueJob) => j.status === 'done' || j.status === 'error' ||
 
 export const useEditor = create<EditorState>((set, get) => ({
   file: null,
+  fileSource: 'local',
   previewUrl: null,
   isProxy: false,
   proxyState: 'none',
@@ -166,12 +169,13 @@ export const useEditor = create<EditorState>((set, get) => ({
   queue: [],
   queueRunning: false,
 
-  setFile: (file) => {
+  setFile: (file, source = 'local') => {
     const { previewUrl, queue } = get()
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     queue.forEach(revokeResults)
     set({
       file,
+      fileSource: file ? source : 'local',
       previewUrl: file ? URL.createObjectURL(file) : null,
       isProxy: false,
       proxyState: 'none',

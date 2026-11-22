@@ -177,6 +177,9 @@ Debajo de la zona de carga (o con el botón **Desde YouTube** cuando ya hay un v
 2. Verás la miniatura, el título y la duración. Elige la **calidad** (360p a 1080p).
 3. Pulsa **Descargar y editar**. Se muestra el progreso (video, audio, unión y carga en el editor) y puedes cancelar.
 4. El video se abre en el editor como cualquier archivo, y te ofrece dividirlo en N clips.
+5. Los clips exportados van a tu carpeta de **Descargas**. El video original **no se guarda en disco**: vive solo en
+   la memoria del navegador (si recargas la página se pierde). Para conservarlo, pulsa **Guardar original** en la
+   cabecera y se descargará completo a Descargas.
 
 Cómo funciona: el navegador no puede descargar de YouTube por sí solo, así que `npm run dev` / `npm run preview`
 incluyen una pequeña API local (`server/youtubePlugin.ts`) que ejecuta **yt-dlp** en tu PC. Se pide H.264 + AAC en MP4

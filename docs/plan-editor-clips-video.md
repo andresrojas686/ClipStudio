@@ -105,6 +105,7 @@ Aplicación web que permite al usuario cargar un video (**MP4, MOV, AVI, MKV, We
 - [x] Vista previa del video (miniatura, título, canal, duración) y selector de calidad (360p–1080p)
 - [x] Descarga con progreso (video, audio, unión, carga en el editor) y cancelación
 - [x] El video entra al flujo normal: dividir en N clips, segmentos, presets, cola y exportación
+- [x] Botón **"Guardar original"** en la cabecera (solo con videos de YouTube): el original vive en memoria y el temporal del servidor se borra, así que este botón lo descarga a Descargas
 - Notas:
   - Solo uso local: un plugin de Vite (`server/youtubePlugin.ts`) expone `/api/yt/*` en `npm run dev` / `npm run preview` y ejecuta **yt-dlp**; en un build estático la sección se oculta
   - yt-dlp se descarga solo en `npm install` (`scripts/fetch-yt-dlp.mjs`); `npm run update-ytdlp` lo actualiza. ffmpeg nativo vía `ffmpeg-static` para unir video y audio
