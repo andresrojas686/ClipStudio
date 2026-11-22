@@ -1,6 +1,8 @@
 import { useRef, useState, type DragEvent } from 'react'
+import { useYoutubeAvailable } from '../hooks/useYoutubeAvailable'
 import { ACCEPTED_EXTENSIONS, checkFile, formatBytes } from '../lib/formatUtils'
 import { useEditor } from '../store/editorStore'
+import { YoutubeImport } from './YoutubeImport'
 
 const ACCEPT = ACCEPTED_EXTENSIONS.map((e) => `.${e}`).join(',')
 
@@ -10,6 +12,8 @@ export function Uploader({ compact = false }: { compact?: boolean }) {
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<{ file: File; warning: string } | null>(null)
+  const [ytOpen, setYtOpen] = useState(false)
+  const youtube = useYoutubeAvailable()
 
   const handle = (file: File | undefined) => {
     if (!file) return
@@ -47,6 +51,18 @@ export function Uploader({ compact = false }: { compact?: boolean }) {
         <button type="button" className="btn-secondary" onClick={() => inputRef.current?.click()}>
           Cambiar video
         </button>
+        {youtube && (
+          <div className="relative">
+            <button type="button" className="btn-secondary" aria-expanded={ytOpen} onClick={() => setYtOpen((o) => !o)}>
+              Desde YouTube
+            </button>
+            {ytOpen && (
+              <div className="absolute right-0 top-full z-40 mt-2 w-[min(32rem,calc(100vw-2rem))] rounded-xl bg-zinc-900 p-3 shadow-2xl ring-1 ring-zinc-700">
+                <YoutubeImport onDone={() => setYtOpen(false)} />
+              </div>
+            )}
+          </div>
+        )}
         {error && <p className="text-sm text-red-400">{error}</p>}
         {pending && <SizeWarning pending={pending} onCancel={() => setPending(null)} onAccept={() => setFile(pending.file)} />}
       </>
@@ -82,6 +98,15 @@ export function Uploader({ compact = false }: { compact?: boolean }) {
       </div>
       {error && <p className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</p>}
       {pending && <SizeWarning pending={pending} onCancel={() => setPending(null)} onAccept={() => setFile(pending.file)} />}
+      {youtube && (
+        <>
+          <div className="flex items-center gap-3 text-xs text-zinc-500">
+            <span className="h-px flex-1 bg-zinc-800" />o desde YouTube
+            <span className="h-px flex-1 bg-zinc-800" />
+          </div>
+          <YoutubeImport />
+        </>
+      )}
     </div>
   )
 }

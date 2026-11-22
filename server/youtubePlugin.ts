@@ -8,13 +8,16 @@
  *  GET /api/yt/download?url=&height=   → SSE: progress / done {id, name, size} / fail {message}
  *  GET /api/yt/file/:id                → el MP4 (se borra tras enviarlo)
  */
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { createReadStream, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import https from 'node:https'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import tls from 'node:tls'
 import type { Connect, Plugin } from 'vite'
 
 const HEIGHTS = [360, 480, 720, 1080] as const
@@ -32,18 +35,20 @@ interface Download {
   name: string
 }
 
-function findTools(root: string): Tools {
+/** Ejecuta `cmd --version` sin bloquear el servidor; null si no existe o falla. */
+const versionOf = (cmd: string, flag: string) =>
+  new Promise<string | null>((done) =>
+    execFile(cmd, [flag], { windowsHide: true, timeout: 20_000 }, (err, stdout) => done(err ? null : String(stdout).trim())),
+  )
+
+async function findTools(root: string): Promise<Tools> {
   const isWin = process.platform === 'win32'
   const local = resolve(root, 'bin', isWin ? 'yt-dlp.exe' : 'yt-dlp')
   let ytdlp: string | null = existsSync(local) ? local : null
   let version: string | null = null
-  for (const candidate of ytdlp ? [ytdlp] : ['yt-dlp']) {
-    const r = spawnSync(candidate, ['--version'], { encoding: 'utf8', windowsHide: true })
-    if (r.status === 0) {
-      ytdlp = candidate
-      version = r.stdout.trim()
-    } else ytdlp = null
-  }
+  const candidate = ytdlp ?? 'yt-dlp'
+  version = await versionOf(candidate, '--version')
+  ytdlp = version ? candidate : null
   let ffmpeg: string | null = null
   try {
     const p = createRequire(resolve(root, 'package.json'))('ffmpeg-static') as string | null
@@ -51,7 +56,7 @@ function findTools(root: string): Tools {
   } catch {
     /* sin ffmpeg-static: se intenta con el del PATH */
   }
-  if (!ffmpeg && spawnSync('ffmpeg', ['-version'], { windowsHide: true }).status === 0) ffmpeg = 'ffmpeg'
+  if (!ffmpeg && (await versionOf('ffmpeg', '-version'))) ffmpeg = 'ffmpeg'
   return { ytdlp, ffmpeg, version }
 }
 
@@ -83,6 +88,47 @@ function explain(stderr: string): string {
   return last ? last.replace(/^ERROR:\s*/, '') : 'yt-dlp terminó con un error inesperado.'
 }
 
+/**
+ * GET HTTPS confiando también en los certificados del sistema operativo
+ * (antivirus o proxies que inspeccionan HTTPS instalan ahí su raíz).
+ */
+function getWithSystemCa(url: URL): Promise<{ type: string; body: Buffer }> {
+  const getCa = (tls as { getCACertificates?: (kind: string) => string[] }).getCACertificates
+  let ca: string[] | undefined
+  try {
+    ca = getCa ? [...getCa('default'), ...getCa('system')] : undefined
+  } catch {
+    ca = undefined
+  }
+  return new Promise((done, fail) => {
+    const req = https.get(url, { ca, timeout: 10_000 }, (r) => {
+      if (r.statusCode !== 200) {
+        r.resume()
+        return fail(new Error(`HTTP ${r.statusCode}`))
+      }
+      const chunks: Buffer[] = []
+      r.on('data', (c: Buffer) => chunks.push(c))
+      r.on('end', () => done({ type: r.headers['content-type'] ?? 'image/jpeg', body: Buffer.concat(chunks) }))
+      r.on('error', fail)
+    })
+    req.on('timeout', () => req.destroy(new Error('timeout')))
+    req.on('error', fail)
+  })
+}
+
+/** Mata yt-dlp y sus hijos (en Windows el .exe lanza un proceso hijo que seguiría escribiendo). */
+function killTree(p: ChildProcess) {
+  if (p.exitCode !== null || !p.pid) return
+  if (process.platform === 'win32') execFile('taskkill', ['/pid', String(p.pid), '/T', '/F'], { windowsHide: true }, () => {})
+  else p.kill()
+}
+
+/** Borrado asíncrono tolerante a bloqueos temporales de archivos (Windows); nunca tumba el servidor. */
+const removeDir = (dir: string) =>
+  rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 }).catch((err) =>
+    console.warn('[youtube] no se pudo borrar', dir, err instanceof Error ? err.message : err),
+  )
+
 function json(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -95,7 +141,7 @@ function query(req: IncomingMessage) {
 
 export function youtubePlugin(): Plugin {
   let root = process.cwd()
-  let tools: Tools | null = null
+  let tools: Promise<Tools> | null = null
   const workDir = join(tmpdir(), 'clipstudio-yt')
   const ready = new Map<string, Download>()
   let active: ChildProcess | null = null
@@ -105,9 +151,9 @@ export function youtubePlugin(): Plugin {
   /** Argumentos comunes: certificados del sistema (antivirus/proxy) y Node como runtime de JS. */
   const baseArgs = () => ['--compat-options', 'no-certifi', '--js-runtimes', `node:${process.execPath}`, '--no-playlist', '--no-warnings']
 
-  const run = (args: string[]) =>
+  const run = (ytdlp: string, args: string[]) =>
     new Promise<{ code: number; stdout: string; stderr: string }>((done) => {
-      const p = spawn(getTools().ytdlp!, [...baseArgs(), ...args], { windowsHide: true })
+      const p = spawn(ytdlp, [...baseArgs(), ...args], { windowsHide: true })
       let stdout = ''
       let stderr = ''
       p.stdout.on('data', (d) => (stdout += d))
@@ -116,17 +162,18 @@ export function youtubePlugin(): Plugin {
       p.on('close', (code) => done({ code: code ?? -1, stdout, stderr }))
     })
 
-  const health: Connect.SimpleHandleFunction = (_req, res) => {
+  const health: Connect.SimpleHandleFunction = async (_req, res) => {
     tools = null // re-detecta (p. ej. tras `npm run update-ytdlp`)
-    const t = getTools()
+    const t = await getTools()
     json(res, 200, { ok: !!(t.ytdlp && t.ffmpeg), ytdlp: !!t.ytdlp, ffmpeg: !!t.ffmpeg, version: t.version })
   }
 
   const info: Connect.SimpleHandleFunction = async (req, res) => {
     const url = query(req).get('url') ?? ''
     if (!isYoutubeUrl(url)) return json(res, 400, { message: 'El link no es de YouTube.' })
-    if (!getTools().ytdlp) return json(res, 503, { message: 'yt-dlp no está instalado. Ejecuta `npm run update-ytdlp`.' })
-    const r = await run(['-J', url])
+    const { ytdlp } = await getTools()
+    if (!ytdlp) return json(res, 503, { message: 'yt-dlp no está instalado. Ejecuta `npm run update-ytdlp`.' })
+    const r = await run(ytdlp, ['-J', url])
     if (r.code !== 0) return json(res, 422, { message: explain(r.stderr) })
     try {
       const j = JSON.parse(r.stdout)
@@ -144,23 +191,23 @@ export function youtubePlugin(): Plugin {
     try {
       const u = new URL(raw)
       if (u.protocol !== 'https:' || !THUMB_HOSTS.test(u.hostname)) throw new Error('host')
-      const r = await fetch(u)
-      if (!r.ok) throw new Error(String(r.status))
-      res.setHeader('Content-Type', r.headers.get('content-type') ?? 'image/jpeg')
+      const r = await getWithSystemCa(u)
+      res.setHeader('Content-Type', r.type)
       res.setHeader('Cache-Control', 'max-age=3600')
-      res.end(Buffer.from(await r.arrayBuffer()))
-    } catch {
+      res.end(r.body)
+    } catch (err) {
+      console.warn('[youtube] miniatura no disponible:', err instanceof Error ? (err.cause ?? err.message) : err)
       res.statusCode = 404
       res.end()
     }
   }
 
-  const download: Connect.SimpleHandleFunction = (req, res) => {
+  const download: Connect.SimpleHandleFunction = async (req, res) => {
     const q = query(req)
     const url = q.get('url') ?? ''
     const height = Number(q.get('height')) || 1080
     if (!isYoutubeUrl(url)) return json(res, 400, { message: 'El link no es de YouTube.' })
-    const t = getTools()
+    const t = await getTools()
     if (!t.ytdlp || !t.ffmpeg) return json(res, 503, { message: 'Falta yt-dlp o ffmpeg. Ejecuta `npm install` o `npm run update-ytdlp`.' })
     if (active) return json(res, 409, { message: 'Ya hay una descarga en curso.' })
 
@@ -201,7 +248,7 @@ export function youtubePlugin(): Plugin {
     let buf = ''
     let finished = false
 
-    const cleanupDir = () => rmSync(dir, { recursive: true, force: true })
+    const cleanupDir = () => removeDir(dir)
 
     p.stdout.on('data', (d: Buffer) => {
       buf += d.toString('utf8')
@@ -216,7 +263,8 @@ export function youtubePlugin(): Plugin {
           const n = Number(done) || 0
           const kind = vcodec && vcodec !== 'none' && vcodec !== 'NA' ? 'video' : 'audio'
           send('progress', { phase: kind, ratio: t2 ? Math.min(1, n / t2) : 0, bytes: n, total: t2 })
-          if (t2 && n >= t2) send('progress', { phase: 'merge', ratio: 1, bytes: n, total: t2 })
+          // Video y audio separados: al terminar el audio, yt-dlp los une con ffmpeg.
+          if (kind === 'audio' && t2 && n >= t2) send('progress', { phase: 'merge', ratio: 1, bytes: n, total: t2 })
         }
       }
     })
@@ -237,8 +285,7 @@ export function youtubePlugin(): Plugin {
     // Si el navegador cierra la conexión (Cancelar), se mata yt-dlp y se limpia.
     res.on('close', () => {
       if (!finished) {
-        p.kill()
-        setTimeout(cleanupDir, 500)
+        killTree(p) // el 'close' del proceso limpia la carpeta
       }
     })
   }
@@ -256,14 +303,14 @@ export function youtubePlugin(): Plugin {
     })
     const stream = createReadStream(item.file)
     stream.pipe(res)
-    const cleanup = () => setTimeout(() => rmSync(join(workDir, id), { recursive: true, force: true }), 500)
+    const cleanup = () => setTimeout(() => removeDir(join(workDir, id)), 500)
     res.on('close', cleanup)
   }
 
   const mount = (middlewares: Connect.Server) => {
     // Restos de sesiones anteriores.
     try {
-      for (const d of readdirSync(workDir)) rmSync(join(workDir, d), { recursive: true, force: true })
+      for (const d of readdirSync(workDir)) removeDir(join(workDir, d))
     } catch {
       /* no existe todavía */
     }
@@ -281,7 +328,7 @@ export function youtubePlugin(): Plugin {
     },
     configureServer(server) {
       mount(server.middlewares)
-      server.httpServer?.on('close', () => active?.kill())
+      server.httpServer?.on('close', () => active && killTree(active))
     },
     configurePreviewServer(server) {
       mount(server.middlewares)
