@@ -17,6 +17,9 @@ export function Timeline() {
   const seek = useEditor((s) => s.seek)
   const selectSegment = useEditor((s) => s.selectSegment)
   const updateSegment = useEditor((s) => s.updateSegment)
+  const texts = useEditor((s) => s.texts)
+  const selectedTextId = useEditor((s) => s.selectedTextId)
+  const selectText = useEditor((s) => s.selectText)
 
   if (!duration) {
     return <div className="h-24 animate-pulse rounded-xl bg-zinc-900" aria-label="Cargando línea de tiempo" />
@@ -147,6 +150,29 @@ export function Timeline() {
           <div className="h-full w-0.5 -translate-x-1/4 bg-red-500" />
         </div>
       </div>
+
+      {/* Rangos de los textos (referencia; se editan en el panel "Textos") */}
+      {texts.length > 0 && (
+        <div className="relative h-4" aria-label="Textos en la línea de tiempo">
+          {texts.map((t, i) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`absolute h-3 overflow-hidden rounded-sm px-1 text-left text-[9px] leading-3 whitespace-nowrap text-white ${
+                t.id === selectedTextId ? 'bg-violet-500 ring-1 ring-white' : 'bg-violet-500/50 hover:bg-violet-500/80'
+              }`}
+              style={{ left: pct(t.start), width: pct(t.end - t.start), top: (i % 2) * 2 }}
+              title={`Texto: ${t.text} (${formatTime(t.start)} – ${formatTime(t.end)})`}
+              onClick={() => {
+                selectText(t.id)
+                seek(t.start)
+              }}
+            >
+              T {t.text}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

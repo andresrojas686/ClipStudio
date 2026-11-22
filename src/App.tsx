@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { ExportPanel } from './components/ExportPanel'
 import { SegmentControls, SegmentList } from './components/SegmentList'
 import { SplitDialog } from './components/SplitDialog'
+import { TextPanel } from './components/TextPanel'
 import { Timeline } from './components/Timeline'
 import { Uploader } from './components/Uploader'
 import { VideoPlayer } from './components/VideoPlayer'
@@ -42,6 +43,7 @@ function useShortcuts() {
         case 'Delete':
         case 'Backspace':
           if (s.selectedId) s.removeSegment(s.selectedId)
+          else if (s.selectedTextId) s.removeText(s.selectedTextId)
           break
       }
     }
@@ -136,13 +138,17 @@ export default function App() {
             <SegmentControls />
             <p className="text-xs text-zinc-500">
               Atajos: <kbd>Espacio</kbd> reproducir · <kbd>I</kbd>/<kbd>O</kbd> marcar inicio/fin · <kbd>←</kbd>/<kbd>→</kbd> fotograma
-              (<kbd>Shift</kbd> = 1 s) · <kbd>Supr</kbd> borrar segmento seleccionado
+              (<kbd>Shift</kbd> = 1 s) · <kbd>Supr</kbd> borrar segmento o texto seleccionado
             </p>
           </div>
           <aside className="flex flex-col gap-6">
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-semibold text-zinc-300">Segmentos</h2>
               <SegmentList />
+            </div>
+            <div className="flex flex-col gap-2">
+              <h2 className="text-sm font-semibold text-zinc-300">Textos</h2>
+              <TextPanel />
             </div>
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-semibold text-zinc-300">Exportar</h2>
