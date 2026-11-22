@@ -1,11 +1,61 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useVideoState } from '../hooks/useVideoState'
 import { formatTime } from '../lib/formatUtils'
-import { rotatedSize } from '../lib/geometry'
-import { usesCrop } from '../lib/presets'
+import { centeredCrop, rotatedSize } from '../lib/geometry'
+import { aspectRatio, usesCrop, type ExportSettings, type Rotation } from '../lib/presets'
 import { useEditor } from '../store/editorStore'
 import { CropOverlay } from './CropOverlay'
 import { ProgressBar } from './ProgressBar'
+import { TextOverlayLayer } from './TextOverlayLayer'
+
+const isBlurMode = (s: ExportSettings) => s.aspect !== 'original' && s.fit === 'blur'
+
+/** Mayor rectángulo con proporción `ratio` que cabe en w×h. */
+function fitInside(w: number, h: number, ratio: number) {
+  if (!w || !h || !ratio) return { w: 0, h: 0 }
+  return w / h > ratio ? { w: h * ratio, h } : { w, h: w / ratio }
+}
+
+/**
+ * Fondo desenfocado de la vista previa: copia del fotograma a muy baja resolución, desenfocada y
+ * ampliada a todo el escenario (igual que la exportación en modo "fondo desenfocado").
+ */
+function BlurBackdrop({ rotation, rotW, rotH, ratio }: { rotation: Rotation; rotW: number; rotH: number; ratio: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const videoEl = useEditor((s) => s.videoEl)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx || !videoEl) return
+    let raf = 0
+    const draw = () => {
+      raf = requestAnimationFrame(draw)
+      if (videoEl.readyState < 2) return
+      const { width: W, height: H } = canvas
+      const cover = Math.max(W / rotW, H / rotH)
+      const quarter = rotation === 90 || rotation === 270
+      // Tamaño del fotograma sin rotar, escalado para cubrir el lienzo una vez rotado.
+      const dw = (quarter ? rotH : rotW) * cover
+      const dh = (quarter ? rotW : rotH) * cover
+      ctx.save()
+      ctx.translate(W / 2, H / 2)
+      ctx.rotate((rotation * Math.PI) / 180)
+      ctx.drawImage(videoEl, -dw / 2, -dh / 2, dw, dh)
+      ctx.restore()
+    }
+    draw()
+    return () => cancelAnimationFrame(raf)
+  }, [videoEl, rotation, rotW, rotH])
+  return (
+    <canvas
+      ref={canvasRef}
+      width={64}
+      height={Math.max(2, Math.round(64 / ratio))}
+      aria-hidden
+      className="absolute inset-0 h-full w-full scale-110 blur-xl"
+    />
+  )
+}
 
 function useElementSize(ref: RefObject<HTMLElement | null>) {
   const [size, setSize] = useState({ w: 0, h: 0 })
@@ -37,6 +87,7 @@ export function VideoPlayer() {
 
   const info = useEditor((s) => s.info)
   const settings = useEditor((s) => s.settings)
+  const crop = useEditor((s) => s.crop)
   const box = useElementSize(boxRef)
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
 
@@ -48,25 +99,36 @@ export function VideoPlayer() {
   const rotation = settings.rotation
   const quarter = rotation === 90 || rotation === 270
   const rot = rotatedSize(srcW, srcH, rotation)
-  const scale = box.w && box.h ? Math.min(box.w / rot.w, box.h / rot.h) : 0
-  const stage = { w: rot.w * scale, h: rot.h * scale }
+  const blur = isBlurMode(settings)
+  // En "fondo desenfocado" el escenario toma la proporción de salida y el video va contenido dentro.
+  const stageRatio = blur ? (aspectRatio(settings.aspect) ?? rot.w / rot.h) : rot.w / rot.h
+  const stage = fitInside(box.w, box.h, stageRatio)
+  const vid = blur ? fitInside(stage.w, stage.h, rot.w / rot.h) : stage
   const showCrop = usesCrop(settings) && duration > 0 && proxyState !== 'building'
+
+  // Cuadro de salida dentro del escenario (donde se colocan los textos).
+  let frameRect = { left: 0, top: 0, width: stage.w, height: stage.h }
+  if (usesCrop(settings)) {
+    const r = crop ?? centeredCrop(rot.w, rot.h, aspectRatio(settings.aspect))
+    frameRect = { left: r.x * stage.w, top: r.y * stage.h, width: r.w * stage.w, height: r.h * stage.h }
+  }
 
   return (
     <div className="flex flex-col gap-2">
       <div ref={boxRef} className="relative aspect-video overflow-hidden rounded-xl bg-black">
-        {/* Escenario con la proporción del video ya rotado; el encuadre se dibuja encima. */}
+        {/* Escenario con la proporción del video ya rotado (o la de salida con desenfoque); encuadre y textos encima. */}
         <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 overflow-hidden"
           style={{ width: stage.w, height: stage.h }}
         >
+          {blur && <BlurBackdrop rotation={rotation} rotW={rot.w} rotH={rot.h} ratio={stageRatio} />}
           <video
             ref={ref}
             src={previewUrl ?? undefined}
             className="absolute top-1/2 left-1/2 max-w-none object-fill"
             style={{
-              width: quarter ? stage.h : stage.w,
-              height: quarter ? stage.w : stage.h,
+              width: quarter ? vid.h : vid.w,
+              height: quarter ? vid.w : vid.h,
               transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
             }}
             preload="auto"
@@ -75,6 +137,7 @@ export function VideoPlayer() {
             onLoadedMetadata={(e) => setNatural({ w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })}
           />
           {showCrop && <CropOverlay w={rot.w} h={rot.h} />}
+          {duration > 0 && proxyState !== 'building' && <TextOverlayLayer frame={frameRect} />}
         </div>
         {proxyState === 'building' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 px-8 text-center">
