@@ -62,6 +62,8 @@ interface EditorState {
   selectedId: string | null
   markIn: number | null
   notice: string | null
+  /** Diálogo "Dividir en N clips" abierto. */
+  splitOpen: boolean
 
   // Motor y exportación
   engine: EngineStatus
@@ -92,6 +94,9 @@ interface EditorState {
   moveSegment: (id: string, dir: -1 | 1) => void
   selectSegment: (id: string | null) => void
   setNotice: (msg: string | null) => void
+  /** Sustituye todos los segmentos por estos tramos (en orden). */
+  replaceSegments: (ranges: { start: number; end: number }[]) => void
+  setSplitOpen: (open: boolean) => void
 
   setEngine: (s: EngineStatus, error?: string | null) => void
   /** Cambia ajustes; si no es un preset, pasa a "Personalizado". */
@@ -152,6 +157,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   selectedId: null,
   markIn: null,
   notice: null,
+  splitOpen: false,
 
   engine: 'idle',
   engineError: null,
@@ -180,6 +186,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedId: null,
       markIn: null,
       notice: null,
+      splitOpen: false,
       queue: [],
     })
   },
@@ -276,6 +283,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ segments })
   },
   selectSegment: (selectedId) => set({ selectedId }),
+  replaceSegments: (ranges) => {
+    const segments = ranges.map((r) => ({ id: newId(), start: round3(r.start), end: round3(r.end) }))
+    set({ segments, selectedId: null, markIn: null, notice: null })
+  },
+  setSplitOpen: (splitOpen) => set({ splitOpen }),
   setNotice: (notice) => set({ notice }),
 
   setEngine: (engine, engineError = null) => set({ engine, engineError }),

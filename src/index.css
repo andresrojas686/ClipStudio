@@ -9,6 +9,16 @@ body {
   @apply bg-zinc-950 text-zinc-100 antialiased;
 }
 
+/* Campos numéricos sin flechas nativas (hay botones − / + propios). */
+input[type='number'] {
+  appearance: textfield;
+}
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
 kbd {
   @apply rounded border border-zinc-700 bg-zinc-800 px-1 font-mono text-[0.75em] text-zinc-300;
 }

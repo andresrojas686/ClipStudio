@@ -6,7 +6,8 @@ Todo el procesamiento ocurre en el navegador con [ffmpeg.wasm](https://ffmpegwas
 ## Uso
 
 1. Arrastra un video (MP4, MOV, AVI, MKV, WebM; recomendado ≤ 500 MB).
-2. Marca segmentos con **I** / **O** mientras reproduces, o con “Añadir segmento aquí”. Ajusta los bordes arrastrando las asas o escribiendo los tiempos.
+2. Al cargar el video puedes **dividirlo en N clips iguales**: eliges cuántos y ves antes el inicio, fin y duración de cada uno
+   (también desde “✂ Dividir en N clips…”). O marca segmentos con **I** / **O** mientras reproduces, o con “Añadir segmento aquí”. Ajusta los bordes arrastrando las asas o escribiendo los tiempos.
    La línea de tiempo muestra la **forma de onda** del audio para encontrar los cortes.
 3. Elige el **destino** (preset) o ajusta a mano:
    - **Encuadre**: proporción (original, 9:16, 4:5, 1:1, 16:9 o libre), *recortar* o *fondo desenfocado*,

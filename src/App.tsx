@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { ExportPanel } from './components/ExportPanel'
 import { SegmentControls, SegmentList } from './components/SegmentList'
+import { SplitDialog } from './components/SplitDialog'
 import { Timeline } from './components/Timeline'
 import { Uploader } from './components/Uploader'
 import { VideoPlayer } from './components/VideoPlayer'
@@ -15,7 +16,7 @@ function useShortcuts() {
       if (el instanceof Element && el.closest('input, textarea, select, [contenteditable="true"]')) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const s = useEditor.getState()
-      if (!s.file || !s.duration) return
+      if (!s.file || !s.duration || s.splitOpen) return
       const frame = 1 / 30
       switch (e.key) {
         case ' ':
@@ -79,6 +80,13 @@ export default function App() {
     if (file) preload()
   }, [file, preload])
 
+  // Al cargar un video (en cuanto se conoce su duración) se ofrece dividirlo en clips.
+  const ready = useEditor((s) => s.duration > 0)
+  const setSplitOpen = useEditor((s) => s.setSplitOpen)
+  useEffect(() => {
+    if (file && ready && useEditor.getState().segments.length === 0) setSplitOpen(true)
+  }, [file, ready, setSplitOpen])
+
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="flex items-center gap-4 border-b border-zinc-800 px-4 py-3 sm:px-6">
@@ -124,6 +132,7 @@ export default function App() {
           </aside>
         </main>
       )}
+      <SplitDialog />
     </div>
   )
 }

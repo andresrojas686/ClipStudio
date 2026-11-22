@@ -89,13 +89,13 @@ Aplicación web que permite al usuario cargar un video (**MP4, MOV, AVI, MKV, We
 - [ ] Backend para archivos > 1 GB
 
 ### Fase 2.5 — División automática en clips
-- [ ] Al cargar un video, ofrecer la opción **"Dividir en N clips"** (también disponible después, desde el panel de segmentos)
-- [ ] El usuario indica cuántos clips quiere sacar y la app reparte la duración total en partes iguales
-- [ ] Vista previa antes de aplicar: tabla con número de clip, **inicio** (min:seg), **fin** (min:seg) y **duración** de cada uno
+- [x] Al cargar un video, ofrecer la opción **"Dividir en N clips"** (también disponible después, desde el panel de segmentos)
+- [x] El usuario indica cuántos clips quiere sacar y la app reparte la duración total en partes iguales
+- [x] Vista previa antes de aplicar: tabla con número de clip, **inicio** (min:seg), **fin** (min:seg) y **duración** de cada uno
   - Ejemplo: video de 28:00 dividido en 7 clips → 4:00 cada uno: 00:00–04:00, 04:00–08:00, … , 24:00–28:00
   - La vista previa se actualiza al cambiar el número de clips
-- [ ] Al aplicar, los clips se crean como segmentos en la línea de tiempo (pidiendo confirmación si ya había segmentos, que se reemplazan)
-- [ ] Los segmentos generados siguen siendo editables a mano y se exportan con el flujo actual (presets, cola, clips separados o unidos)
+- [x] Al aplicar, los clips se crean como segmentos en la línea de tiempo (pidiendo confirmación si ya había segmentos, que se reemplazan)
+- [x] Los segmentos generados siguen siendo editables a mano y se exportan con el flujo actual (presets, cola, clips separados o unidos)
 - Notas:
   - Si la duración no se divide exacta, el reparto se hace con precisión de milisegundos (p. ej. 28:28 en 7 clips → 4:04 cada uno) y el último clip termina justo al final del video
   - Videos de más de una hora se muestran como h:mm:ss

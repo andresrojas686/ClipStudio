@@ -7,6 +7,7 @@ export function SegmentControls() {
   const setMarkIn = useEditor((s) => s.setMarkIn)
   const markOut = useEditor((s) => s.markOut)
   const addSegmentAtPlayhead = useEditor((s) => s.addSegmentAtPlayhead)
+  const setSplitOpen = useEditor((s) => s.setSplitOpen)
   const markIn = useEditor((s) => s.markIn)
   const notice = useEditor((s) => s.notice)
   const duration = useEditor((s) => s.duration)
@@ -22,6 +23,9 @@ export function SegmentControls() {
         </button>
         <button type="button" className="btn-secondary" onClick={addSegmentAtPlayhead} disabled={!duration}>
           + Añadir segmento aquí
+        </button>
+        <button type="button" className="btn-secondary" onClick={() => setSplitOpen(true)} disabled={!duration}>
+          ✂ Dividir en N clips…
         </button>
         {markIn !== null && (
           <span className="self-center text-sm text-emerald-400">Inicio en {formatTime(markIn, 2)} — ahora marca el fin</span>
