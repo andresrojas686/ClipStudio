@@ -13,6 +13,8 @@ import {
 } from 'mediabunny'
 import type { OutputGeometry } from './geometry'
 import type { Bitrate } from './presets'
+import { touchesRange, type TextOverlay } from './textOverlay'
+import { renderTextCanvas } from './textRender'
 
 /**
  * Re-codificación con las APIs nativas del navegador (WebCodecs) vía mediabunny.
@@ -51,11 +53,48 @@ function makeBlurPad(W: number, H: number) {
   }
 }
 
+/** Texto ya rasterizado, con su tramo en segundos relativos al clip. */
+interface TextLayer {
+  canvas: OffscreenCanvas
+  x: number
+  y: number
+  start: number
+  end: number
+}
+
+/**
+ * Dibuja el fotograma (ya recortado y escalado por mediabunny, o compuesto por `inner`) y encima los textos activos.
+ */
+function withTexts(W: number, H: number, layers: TextLayer[], clipStart: number, inner?: (s: VideoSample) => OffscreenCanvas) {
+  const canvas = new OffscreenCanvas(W, H)
+  const ctx = canvas.getContext('2d')!
+  // Según el recorte, los tiempos pueden llegar absolutos o ya relativos al clip: se decide con la primera muestra.
+  let offset: number | null = null
+  return (sample: VideoSample) => {
+    offset ??= clipStart > 0.25 && sample.timestamp >= clipStart - 0.25 ? clipStart : 0
+    const t = sample.timestamp - offset
+    if (inner) ctx.drawImage(inner(sample), 0, 0)
+    else sample.draw(ctx, 0, 0, W, H)
+    for (const l of layers) if (t >= l.start && t < l.end) ctx.drawImage(l.canvas, l.x, l.y)
+    return canvas
+  }
+}
+
+async function buildTextLayers(texts: TextOverlay[], start: number, end: number, W: number, H: number): Promise<TextLayer[]> {
+  const out: TextLayer[] = []
+  for (const t of texts) {
+    if (!touchesRange(t, start, end)) continue
+    const r = await renderTextCanvas(t, W, H)
+    out.push({ ...r, start: Math.max(0, t.start - start), end: Math.min(end - start, t.end - start) })
+  }
+  return out
+}
+
 function quality(bitrate: Bitrate) {
   return bitrate === 'auto' ? QUALITY_HIGH : new Quality({ bitrate: bitrate * 1_000_000 })
 }
 
-function videoOptions(geo: OutputGeometry, bitrate: Bitrate): ConversionVideoOptions {
+function videoOptions(geo: OutputGeometry, bitrate: Bitrate, layers: TextLayer[], clipStart: number): ConversionVideoOptions {
   const base: ConversionVideoOptions = {
     codec: 'avc',
     quality: quality(bitrate),
@@ -64,15 +103,20 @@ function videoOptions(geo: OutputGeometry, bitrate: Bitrate): ConversionVideoOpt
     // La rotación se "hornea" en los fotogramas, como hace la vía FFmpeg.
     allowTransformationMetadata: false,
   }
+  const { outW: W, outH: H } = geo
   if (geo.mode === 'blur') {
-    return { ...base, process: makeBlurPad(geo.outW, geo.outH), processedWidth: geo.outW, processedHeight: geo.outH }
+    const pad = makeBlurPad(W, H)
+    const process = layers.length ? withTexts(W, H, layers, clipStart, pad) : pad
+    return { ...base, process, processedWidth: W, processedHeight: H }
   }
   return {
     ...base,
     ...(geo.crop ? { crop: geo.crop } : {}),
-    width: geo.outW,
-    height: geo.outH,
+    width: W,
+    height: H,
     fit: 'fill',
+    // `process` se aplica después del recorte y el escalado: recibe fotogramas W×H.
+    ...(layers.length ? { process: withTexts(W, H, layers, clipStart), processedWidth: W, processedHeight: H } : {}),
   }
 }
 
@@ -89,6 +133,7 @@ export function convertSegment(
   geo: OutputGeometry,
   bitrate: Bitrate,
   onProgress: (p: number) => void,
+  texts: TextOverlay[] = [],
 ): WebCodecsJob {
   let conversion: Conversion | null = null
   let cancelled = false
@@ -111,7 +156,7 @@ export function convertSegment(
         output,
         tracks: 'primary',
         trim: { start, end },
-        video: videoOptions(geo, bitrate),
+        video: videoOptions(geo, bitrate, await buildTextLayers(texts, start, end, geo.outW, geo.outH), start),
         audio: { codec: 'aac' },
         showWarnings: false,
       })

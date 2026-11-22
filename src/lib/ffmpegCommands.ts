@@ -35,8 +35,36 @@ export function rotateFilter(rotation: number): string | null {
   }
 }
 
-/** Cadena de filtros de video para la geometría pedida. Termina en la etiqueta [v]. */
-export function videoFilter(geo: OutputGeometry, videoStream: number | null): string {
+/** Imagen (PNG) superpuesta en el cuadro de salida entre `start` y `end` (segundos del clip). */
+export interface ImageOverlay {
+  file: string
+  x: number
+  y: number
+  start: number
+  end: number
+}
+
+/**
+ * Añade los textos (PNG, entradas 1..N) sobre la salida de `chain` (que termina en [v]).
+ * Cada uno se muestra solo en su tramo con `enable=between(t,a,b)`.
+ */
+function withOverlays(chain: string, overlays: ImageOverlay[]): string {
+  if (!overlays.length) return chain
+  let out = chain.replace(/\[v\]$/, '[v0]')
+  overlays.forEach((o, i) => {
+    const last = i === overlays.length - 1
+    const enable = `between(t,${o.start.toFixed(3)},${o.end.toFixed(3)})`
+    out += `;[v${i}][${i + 1}:v]overlay=${o.x}:${o.y}:enable='${enable}'${last ? ',format=yuv420p[v]' : `[v${i + 1}]`}`
+  })
+  return out
+}
+
+/** Cadena de filtros de video para la geometría pedida (más los textos). Termina en la etiqueta [v]. */
+export function videoFilter(geo: OutputGeometry, videoStream: number | null, overlays: ImageOverlay[] = []): string {
+  return withOverlays(baseVideoFilter(geo, videoStream), overlays)
+}
+
+function baseVideoFilter(geo: OutputGeometry, videoStream: number | null): string {
   const { outW: W, outH: H } = geo
   const pre = [rotateFilter(geo.rotation)].filter(Boolean) as string[]
   const src = `[${videoMap(videoStream)}]`
@@ -78,20 +106,25 @@ export function outputExtension(settings: ExportSettings, sourceExt: string) {
 }
 
 /** Argumentos para cortar (y convertir) un segmento. `-ss` va antes de `-i` para buscar rápido. */
-export function buildCutArgs(spec: CutSpec, settings: ExportSettings, geo: OutputGeometry): string[] {
+export function buildCutArgs(spec: CutSpec, settings: ExportSettings, geo: OutputGeometry, overlays: ImageOverlay[] = []): string[] {
   const { input, output, start, end, hasAudio, videoStream } = spec
-  const seek = ['-ss', ffTime(start), '-i', input, '-t', ffTime(end - start)]
+  const seek = ['-ss', ffTime(start), '-i', input]
+  // `-t` es opción de salida: debe ir después de TODAS las entradas (si no, se aplicaría a la siguiente entrada).
+  const duration = ['-t', ffTime(end - start)]
   const audioMap = hasAudio ? ['-map', '0:a:0'] : []
 
   if (isStreamCopy(settings)) {
     // Sin re-codificar: instantáneo, pero el corte cae en el keyframe anterior.
-    return [...seek, '-map', videoMap(videoStream), ...audioMap, '-c', 'copy', '-avoid_negative_ts', 'make_zero', output]
+    return [...seek, ...duration, '-map', videoMap(videoStream), ...audioMap, '-c', 'copy', '-avoid_negative_ts', 'make_zero', output]
   }
 
   const audio = hasAudio ? AAC : ['-an']
   return [
     ...seek,
-    '-filter_complex', videoFilter(geo, videoStream),
+    // Las imágenes de texto van después: `-ss` solo afecta a la entrada 0 (el video).
+    ...overlays.flatMap((o) => ['-i', o.file]),
+    ...duration,
+    '-filter_complex', videoFilter(geo, videoStream, overlays),
     '-map', '[v]', ...audioMap,
     ...X264, ...rateArgs(settings.bitrate), ...audio, ...MP4,
     output,

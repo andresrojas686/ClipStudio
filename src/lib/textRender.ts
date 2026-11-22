@@ -158,15 +158,18 @@ export function drawText(ctx: Ctx2D, t: TextOverlay, W: number, H: number, origi
   return L
 }
 
-/** Rasteriza el texto en un PNG transparente para ffmpeg; `x`/`y` es dónde superponerlo en el cuadro. */
-export async function renderTextPng(t: TextOverlay, W: number, H: number) {
+/** Rasteriza el texto en un lienzo del tamaño de su caja; `x`/`y` es dónde va en el cuadro W×H. */
+export async function renderTextCanvas(t: TextOverlay, W: number, H: number) {
   await loadTextFonts()
   const L = layoutText(t, W, H)
-  const cw = Math.ceil(L.width + L.margin * 2)
-  const ch = Math.ceil(L.height + L.margin * 2)
-  const canvas = new OffscreenCanvas(cw, ch)
-  const ctx = canvas.getContext('2d')!
-  drawText(ctx, t, W, H, { x: L.margin, y: L.margin }, L)
+  const canvas = new OffscreenCanvas(Math.ceil(L.width + L.margin * 2), Math.ceil(L.height + L.margin * 2))
+  drawText(canvas.getContext('2d')!, t, W, H, { x: L.margin, y: L.margin }, L)
+  return { canvas, x: Math.round(L.x - L.margin), y: Math.round(L.y - L.margin) }
+}
+
+/** PNG transparente del texto para superponerlo con ffmpeg. */
+export async function renderTextPng(t: TextOverlay, W: number, H: number) {
+  const { canvas, x, y } = await renderTextCanvas(t, W, H)
   const blob = await canvas.convertToBlob({ type: 'image/png' })
-  return { png: new Uint8Array(await blob.arrayBuffer()), x: Math.round(L.x - L.margin), y: Math.round(L.y - L.margin) }
+  return { png: new Uint8Array(await blob.arrayBuffer()), x, y }
 }

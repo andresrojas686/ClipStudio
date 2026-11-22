@@ -38,8 +38,14 @@ async function processQueue() {
       try {
         // Si el análisis del archivo aún no terminó, se espera: decide qué motor usar (ffmpeg o WebCodecs).
         const info = st().info ?? (await probe(file).catch(() => null))
-        const results = await exportSegments(file, job.segments, job.settings, job.crop, info, (progress, label) =>
-          updateJob(job.id, { progress, label }),
+        const results = await exportSegments(
+          file,
+          job.segments,
+          job.settings,
+          job.crop,
+          info,
+          (progress, label) => updateJob(job.id, { progress, label }),
+          job.texts,
         )
         // Si mientras tanto se cambió de video, los resultados ya no pertenecen a la cola actual.
         if (st().file !== file) {

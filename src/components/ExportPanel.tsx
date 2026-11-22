@@ -1,8 +1,9 @@
 import { useFfmpeg } from '../hooks/useFfmpeg'
-import { needsBrowserDecoder } from '../lib/exporter'
+import { effectiveSettings, needsBrowserDecoder } from '../lib/exporter'
 import { getExtension } from '../lib/formatUtils'
 import { describeOutput } from '../lib/geometry'
 import { isStreamCopy } from '../lib/presets'
+import { touchesRange } from '../lib/textOverlay'
 import { useEditor } from '../store/editorStore'
 import { ExportQueue } from './ExportQueue'
 import { ExportSettingsPanel } from './ExportSettingsPanel'
@@ -10,12 +11,17 @@ import { ExportSettingsPanel } from './ExportSettingsPanel'
 export function ExportPanel() {
   const file = useEditor((s) => s.file)
   const segments = useEditor((s) => s.segments)
-  const settings = useEditor((s) => s.settings)
+  const rawSettings = useEditor((s) => s.settings)
+  const texts = useEditor((s) => s.texts)
   const crop = useEditor((s) => s.crop)
   const info = useEditor((s) => s.info)
   const queueRunning = useEditor((s) => s.queueRunning)
   const { exportNow, enqueue } = useFfmpeg()
 
+  // Con textos en los segmentos, el corte rápido pasa a preciso (hay que re-codificar para grabarlos).
+  const settings = effectiveSettings(rawSettings, texts, segments)
+  const textCount = texts.filter((t) => segments.some((s) => touchesRange(t, s.start, s.end))).length
+  const forcedEncode = isStreamCopy(rawSettings) && !isStreamCopy(settings)
   const ext = file ? getExtension(file.name) : ''
   const copy = isStreamCopy(settings)
   const browserDecode = needsBrowserDecoder(info, settings)
@@ -27,8 +33,15 @@ export function ExportPanel() {
 
       <p className="text-xs text-zinc-500">
         Salida: {describeOutput(settings, crop, info?.width ?? null, info?.height ?? null, ext)}
+        {textCount > 0 && ` · ${textCount} texto${textCount > 1 ? 's' : ''}`}
         {!copy && !browserDecode && ' · re-codificar en el navegador puede tardar varias veces la duración del clip.'}
       </p>
+      {forcedEncode && (
+        <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200 ring-1 ring-amber-500/30">
+          Hay textos dentro de los segmentos: el corte <strong>Rápido</strong> no puede grabarlos, así que se re-codificará
+          (corte preciso).
+        </p>
+      )}
       {browserDecode && (
         <p className="rounded-lg bg-sky-500/10 px-3 py-2 text-xs text-sky-200 ring-1 ring-sky-500/30">
           Este video es <strong>{info?.videoCodec?.toUpperCase()}</strong>: se convertirá con el decodificador nativo del

@@ -1,5 +1,6 @@
 import { useFfmpeg } from '../hooks/useFfmpeg'
 import { formatBytes, formatTime } from '../lib/formatUtils'
+import { effectiveSettings } from '../lib/exporter'
 import { computeGeometry } from '../lib/geometry'
 import { isStreamCopy, presetName } from '../lib/presets'
 import { useEditor, type ExportResult, type QueueJob } from '../store/editorStore'
@@ -15,7 +16,7 @@ const STATUS: Record<QueueJob['status'], { text: string; cls: string }> = {
 
 /** "TikTok · 1080×1920 · 2 clips (1:15)". */
 function jobTitle(job: QueueJob, width: number | null, height: number | null) {
-  const s = job.settings
+  const s = effectiveSettings(job.settings, job.texts, job.segments)
   const dims = isStreamCopy(s)
     ? 'sin re-codificar'
     : width && height

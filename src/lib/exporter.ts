@@ -1,9 +1,11 @@
 import type { ExportResult, Segment } from '../store/editorStore'
 import { CancelledError, onTerminate, probe, UNDECODABLE_CODECS, withFFmpeg, type ProbeInfo } from './ffmpegClient'
-import { buildConcatArgs, buildConcatList, buildCutArgs, buildProxyArgs, outputExtension } from './ffmpegCommands'
+import { buildConcatArgs, buildConcatList, buildCutArgs, buildProxyArgs, outputExtension, type ImageOverlay } from './ffmpegCommands'
 import { getBaseName, getExtension } from './formatUtils'
 import { computeGeometry } from './geometry'
 import { isStreamCopy, type CropRect, type ExportSettings } from './presets'
+import { touchesRange, type TextOverlay } from './textOverlay'
+import { renderTextPng } from './textRender'
 
 export type ProgressFn = (progress: number, label: string) => void
 
@@ -39,6 +41,18 @@ function explain(e: unknown, info: ProbeInfo | null): unknown {
   return e
 }
 
+/** ¿Algún texto se ve dentro de alguno de los segmentos? */
+export function textsInSegments(texts: TextOverlay[], segments: Segment[]) {
+  return texts.some((t) => segments.some((s) => touchesRange(t, s.start, s.end)))
+}
+
+/**
+ * Con textos no se puede copiar sin re-codificar: el corte "Rápido" pasa a "Preciso".
+ */
+export function effectiveSettings(settings: ExportSettings, texts: TextOverlay[], segments: Segment[]): ExportSettings {
+  return isStreamCopy(settings) && textsInSegments(texts, segments) ? { ...settings, cutMode: 'precise' } : settings
+}
+
 /**
  * Exporta los segmentos en el orden de la lista.
  * - separate: un archivo por segmento.
@@ -51,7 +65,9 @@ export async function exportSegments(
   crop: CropRect | null,
   info: ProbeInfo | null,
   onProgress: ProgressFn,
+  texts: TextOverlay[] = [],
 ): Promise<ExportResult[]> {
+  settings = effectiveSettings(settings, texts, segments)
   const srcExt = getExtension(file.name)
   const ext = outputExtension(settings, srcExt)
   const base = getBaseName(file.name)
@@ -86,7 +102,7 @@ export async function exportSegments(
 
         let data: Uint8Array
         if (convertSegment) {
-          const job = convertSegment(file, seg.start, seg.end, geo, settings.bitrate, (p) => report(p * dur))
+          const job = convertSegment(file, seg.start, seg.end, geo, settings.bitrate, (p) => report(p * dur), texts)
           const off = onTerminate(job.cancel)
           try {
             data = await job.promise
@@ -99,7 +115,20 @@ export async function exportSegments(
           }
           if (merge) await write(out, data)
         } else {
-          await exec(buildCutArgs({ input, output: out, start: seg.start, end: seg.end, hasAudio, videoStream }, settings, geo), report)
+          // Textos del segmento: PNG transparentes superpuestos en su tramo (tiempos relativos al clip).
+          const overlays: ImageOverlay[] = []
+          try {
+            for (const [k, t] of texts.filter((t) => touchesRange(t, seg.start, seg.end)).entries()) {
+              const r = await renderTextPng(t, geo.outW, geo.outH)
+              const name = `txt_${n}_${k}.png`
+              await write(name, r.png)
+              overlays.push({ file: name, x: r.x, y: r.y, start: Math.max(0, t.start - seg.start), end: Math.min(dur, t.end - seg.start) })
+            }
+            const spec = { input, output: out, start: seg.start, end: seg.end, hasAudio, videoStream }
+            await exec(buildCutArgs(spec, settings, geo, overlays), report)
+          } finally {
+            for (const o of overlays) await remove(o.file)
+          }
           data = merge ? new Uint8Array() : await read(out)
           if (!merge) await remove(out)
         }
