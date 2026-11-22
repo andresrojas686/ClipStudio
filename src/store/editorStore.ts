@@ -9,6 +9,7 @@ import {
   type ExportSettings,
   type Preset,
 } from '../lib/presets'
+import { defaultText, MIN_TEXT_SECONDS, type TextOverlay } from '../lib/textOverlay'
 
 export interface Segment {
   id: string
@@ -34,6 +35,7 @@ export interface QueueJob {
   settings: ExportSettings
   crop: CropRect | null
   segments: Segment[]
+  texts: TextOverlay[]
   status: JobStatus
   progress: number
   label: string
@@ -67,6 +69,10 @@ interface EditorState {
   /** Diálogo "Dividir en N clips" abierto. */
   splitOpen: boolean
 
+  // Textos superpuestos
+  texts: TextOverlay[]
+  selectedTextId: string | null
+
   // Motor y exportación
   engine: EngineStatus
   engineError: string | null
@@ -99,6 +105,13 @@ interface EditorState {
   /** Sustituye todos los segmentos por estos tramos (en orden). */
   replaceSegments: (ranges: { start: number; end: number }[]) => void
   setSplitOpen: (open: boolean) => void
+
+  /** Crea un texto en la posición actual del cabezal y lo selecciona. */
+  addText: () => void
+  /** Actualiza un texto; los tiempos se validan (devuelve un error o null). */
+  updateText: (id: string, patch: Partial<TextOverlay>) => string | null
+  removeText: (id: string) => void
+  selectText: (id: string | null) => void
 
   setEngine: (s: EngineStatus, error?: string | null) => void
   /** Cambia ajustes; si no es un preset, pasa a "Personalizado". */
@@ -162,6 +175,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   notice: null,
   splitOpen: false,
 
+  texts: [],
+  selectedTextId: null,
+
   engine: 'idle',
   engineError: null,
   settings: DEFAULT_SETTINGS,
@@ -191,6 +207,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       markIn: null,
       notice: null,
       splitOpen: false,
+      texts: [],
+      selectedTextId: null,
       queue: [],
     })
   },
@@ -286,12 +304,37 @@ export const useEditor = create<EditorState>((set, get) => ({
     ;[segments[i], segments[j]] = [segments[j], segments[i]]
     set({ segments })
   },
-  selectSegment: (selectedId) => set({ selectedId }),
+  selectSegment: (selectedId) => set(selectedId ? { selectedId, selectedTextId: null } : { selectedId }),
   replaceSegments: (ranges) => {
     const segments = ranges.map((r) => ({ id: newId(), start: round3(r.start), end: round3(r.end) }))
     set({ segments, selectedId: null, markIn: null, notice: null })
   },
   setSplitOpen: (splitOpen) => set({ splitOpen }),
+
+  addText: () => {
+    const { currentTime, duration, texts } = get()
+    if (!duration) return
+    const t = defaultText(currentTime, duration)
+    set({ texts: [...texts, t], selectedTextId: t.id, selectedId: null })
+  },
+  updateText: (id, patch) => {
+    const { texts, duration } = get()
+    const cur = texts.find((t) => t.id === id)
+    if (!cur) return null
+    const next = { ...cur, ...patch }
+    if ('start' in patch || 'end' in patch) {
+      next.start = round3(Math.max(0, next.start))
+      next.end = round3(Math.min(duration, next.end))
+      if (next.end - next.start < MIN_TEXT_SECONDS - 1e-6) return 'El fin debe ser posterior al inicio.'
+    }
+    set({ texts: texts.map((t) => (t.id === id ? next : t)) })
+    return null
+  },
+  removeText: (id) => {
+    const { texts, selectedTextId } = get()
+    set({ texts: texts.filter((t) => t.id !== id), selectedTextId: selectedTextId === id ? null : selectedTextId })
+  },
+  selectText: (selectedTextId) => set(selectedTextId ? { selectedTextId, selectedId: null } : { selectedTextId }),
   setNotice: (notice) => set({ notice }),
 
   setEngine: (engine, engineError = null) => set({ engine, engineError }),
@@ -312,13 +355,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setCrop: (crop) => set({ crop }),
   enqueue: () => {
-    const { segments, settings, crop, queue } = get()
+    const { segments, settings, crop, queue, texts } = get()
     if (segments.length === 0) return null
     const job: QueueJob = {
       id: `job-${Date.now().toString(36)}-${idCounter++}`,
       settings: { ...settings },
       crop: crop ? { ...crop } : null,
       segments: segments.map((s) => ({ ...s })),
+      texts: texts.map((t) => ({ ...t })),
       status: 'pending',
       progress: 0,
       label: 'En cola',
