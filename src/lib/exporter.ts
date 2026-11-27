@@ -1,6 +1,6 @@
 import type { ExportResult, Segment } from '../store/editorStore'
 import { CancelledError, onTerminate, probe, UNDECODABLE_CODECS, withFFmpeg, type ProbeInfo } from './ffmpegClient'
-import { buildConcatArgs, buildConcatList, buildCutArgs, buildProxyArgs, outputExtension, type ImageOverlay } from './ffmpegCommands'
+import { buildConcatArgs, buildConcatList, buildCutArgs, buildProxyArgs, buildSpeedArgs, outputExtension, type ImageOverlay } from './ffmpegCommands'
 import { getBaseName, getExtension } from './formatUtils'
 import { computeGeometry } from './geometry'
 import { isStreamCopy, type CropRect, type ExportSettings } from './presets'
@@ -23,7 +23,8 @@ function toBlob(data: Uint8Array, ext: string) {
 
 function suffix(s: ExportSettings) {
   const fit = s.aspect !== 'original' && s.fit === 'blur' ? '_blur' : ''
-  return `${s.presetId}${fit}${isStreamCopy(s) ? '' : s.aspect === 'original' ? '_hq' : ''}`
+  const speed = s.speed !== 1 ? `_${s.speed}x` : ''
+  return `${s.presetId}${fit}${isStreamCopy(s) ? '' : s.aspect === 'original' ? '_hq' : ''}${speed}`
 }
 
 /** ¿Hay que re-codificar con WebCodecs porque ffmpeg.wasm no decodifica este códec? */
@@ -102,7 +103,9 @@ export async function exportSegments(
 
         let data: Uint8Array
         if (convertSegment) {
-          const job = convertSegment(file, seg.start, seg.end, geo, settings.bitrate, (p) => report(p * dur), texts)
+          // Con otra velocidad, WebCodecs genera el clip a 1× (~70 % del progreso) y ffmpeg cambia la velocidad.
+          const share = settings.speed === 1 ? 1 : 0.7
+          const job = convertSegment(file, seg.start, seg.end, geo, settings.bitrate, (p) => report(p * dur * share), texts)
           const off = onTerminate(job.cancel)
           try {
             data = await job.promise
@@ -113,7 +116,20 @@ export async function exportSegments(
           } finally {
             off()
           }
-          if (merge) await write(out, data)
+          if (settings.speed !== 1) {
+            const raw = `speed_in_${n}.mp4`
+            await write(raw, data)
+            try {
+              const outDur = dur / settings.speed
+              await exec(buildSpeedArgs(raw, out, settings.speed, hasAudio, settings.bitrate), (t) =>
+                report(dur * share + (Math.min(t, outDur) / outDur) * dur * (1 - share)),
+              )
+            } finally {
+              await remove(raw)
+            }
+            data = merge ? new Uint8Array() : await read(out)
+            if (!merge) await remove(out)
+          } else if (merge) await write(out, data)
         } else {
           // Textos del segmento: PNG transparentes superpuestos en su tramo (tiempos relativos al clip).
           const overlays: ImageOverlay[] = []
@@ -125,7 +141,8 @@ export async function exportSegments(
               overlays.push({ file: name, x: r.x, y: r.y, start: Math.max(0, t.start - seg.start), end: Math.min(dur, t.end - seg.start) })
             }
             const spec = { input, output: out, start: seg.start, end: seg.end, hasAudio, videoStream }
-            await exec(buildCutArgs(spec, settings, geo, overlays), report)
+            // ffmpeg informa del tiempo de SALIDA; se pasa a segundos del original.
+            await exec(buildCutArgs(spec, settings, geo, overlays), (t) => report(t * settings.speed))
           } finally {
             for (const o of overlays) await remove(o.file)
           }

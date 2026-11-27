@@ -59,9 +59,34 @@ function withOverlays(chain: string, overlays: ImageOverlay[]): string {
   return out
 }
 
-/** Cadena de filtros de video para la geometría pedida (más los textos). Termina en la etiqueta [v]. */
-export function videoFilter(geo: OutputGeometry, videoStream: number | null, overlays: ImageOverlay[] = []): string {
-  return withOverlays(baseVideoFilter(geo, videoStream), overlays)
+/**
+ * Cadena de filtros de video para la geometría pedida, los textos y la velocidad. Termina en la etiqueta [v].
+ * El cambio de velocidad va al final: los `enable` de los textos siguen en tiempo del clip original.
+ */
+export function videoFilter(geo: OutputGeometry, videoStream: number | null, overlays: ImageOverlay[] = [], speed = 1): string {
+  const chain = withOverlays(baseVideoFilter(geo, videoStream), overlays)
+  return speed === 1 ? chain : chain.replace(/\[v\]$/, `,${setptsFilter(speed)}[v]`)
+}
+
+const setptsFilter = (speed: number) => `setpts=PTS/${speed}`
+
+/**
+ * Cambio de tempo del audio sin alterar el tono. `atempo` admite de 0,5 a 2 por instancia en esta versión de
+ * FFmpeg, así que 0,25× se consigue encadenando dos.
+ */
+export function atempoChain(speed: number): string {
+  const parts: number[] = []
+  let rest = speed
+  while (rest < 0.5) {
+    parts.push(0.5)
+    rest /= 0.5
+  }
+  while (rest > 2) {
+    parts.push(2)
+    rest /= 2
+  }
+  parts.push(rest)
+  return parts.map((p) => `atempo=${Number(p.toFixed(4))}`).join(',')
 }
 
 function baseVideoFilter(geo: OutputGeometry, videoStream: number | null): string {
@@ -109,7 +134,7 @@ export function outputExtension(settings: ExportSettings, sourceExt: string) {
 export function buildCutArgs(spec: CutSpec, settings: ExportSettings, geo: OutputGeometry, overlays: ImageOverlay[] = []): string[] {
   const { input, output, start, end, hasAudio, videoStream } = spec
   const seek = ['-ss', ffTime(start), '-i', input]
-  // `-t` es opción de salida: debe ir después de TODAS las entradas (si no, se aplicaría a la siguiente entrada).
+  // Copia sin re-codificar (solo a 1×): `-t` como opción de salida.
   const duration = ['-t', ffTime(end - start)]
   const audioMap = hasAudio ? ['-map', '0:a:0'] : []
 
@@ -119,14 +144,30 @@ export function buildCutArgs(spec: CutSpec, settings: ExportSettings, geo: Outpu
   }
 
   const audio = hasAudio ? AAC : ['-an']
+  const speed = settings.speed
+  // Al re-codificar, `-t` va como opción de ENTRADA del video: limita lo leído del original y la salida dura
+  // `duración / velocidad` sola (como opción de salida cortaría el resultado ya acelerado o ralentizado).
+  const speedAudio = hasAudio && speed !== 1
+  const filter = videoFilter(geo, videoStream, overlays, speed) + (speedAudio ? `;[0:a:0]${atempoChain(speed)}[a]` : '')
   return [
-    ...seek,
-    // Las imágenes de texto van después: `-ss` solo afecta a la entrada 0 (el video).
+    '-ss', ffTime(start), '-t', ffTime(end - start), '-i', input,
+    // Las imágenes de texto van después: `-ss`/`-t` solo afectan a la entrada 0 (el video).
     ...overlays.flatMap((o) => ['-i', o.file]),
-    ...duration,
-    '-filter_complex', videoFilter(geo, videoStream, overlays),
-    '-map', '[v]', ...audioMap,
+    '-filter_complex', filter,
+    '-map', '[v]', ...(speedAudio ? ['-map', '[a]'] : audioMap),
     ...X264, ...rateArgs(settings.bitrate), ...audio, ...MP4,
+    output,
+  ]
+}
+
+/** Cambia la velocidad de un clip ya cortado (segundo paso de la vía WebCodecs). */
+export function buildSpeedArgs(input: string, output: string, speed: number, hasAudio: boolean, bitrate: Bitrate): string[] {
+  const filter = `[0:v:0]${setptsFilter(speed)}[v]` + (hasAudio ? `;[0:a:0]${atempoChain(speed)}[a]` : '')
+  return [
+    '-i', input,
+    '-filter_complex', filter,
+    '-map', '[v]', ...(hasAudio ? ['-map', '[a]'] : []),
+    ...X264, ...rateArgs(bitrate), ...(hasAudio ? AAC : ['-an']), ...MP4,
     output,
   ]
 }

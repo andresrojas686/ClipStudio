@@ -9,6 +9,13 @@ export type Resolution = 'source' | 480 | 720 | 1080 | 1440 | 2160
 export type Bitrate = 'auto' | 2 | 4 | 6 | 8 | 12 | 16
 export type CutMode = 'fast' | 'precise'
 export type CombineMode = 'separate' | 'merge'
+/** Velocidad de reproducción del corto exportado (1 = normal). */
+export type Speed = 0.25 | 0.5 | 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2
+
+export const SPEEDS: Speed[] = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+
+/** 1.5 → "1,5×" (coma decimal). */
+export const formatSpeed = (s: number) => `${String(s).replace('.', ',')}×`
 
 export interface ExportSettings {
   presetId: string
@@ -19,6 +26,7 @@ export interface ExportSettings {
   bitrate: Bitrate
   cutMode: CutMode
   combine: CombineMode
+  speed: Speed
 }
 
 /** Encuadre normalizado (0–1) sobre el video ya rotado. */
@@ -65,6 +73,7 @@ export const DEFAULT_SETTINGS: ExportSettings = {
   bitrate: 'auto',
   cutMode: 'precise',
   combine: 'separate',
+  speed: 1,
 }
 
 export function applyPreset(settings: ExportSettings, preset: Preset): ExportSettings {
@@ -90,7 +99,7 @@ export function aspectRatio(aspect: Aspect): number | null {
 
 /** ¿La exportación puede copiar los streams sin re-codificar? */
 export function isPassThrough(s: ExportSettings) {
-  return s.aspect === 'original' && s.rotation === 0 && s.resolution === 'source' && s.bitrate === 'auto'
+  return s.aspect === 'original' && s.rotation === 0 && s.resolution === 'source' && s.bitrate === 'auto' && s.speed === 1
 }
 
 export function isStreamCopy(s: ExportSettings) {
