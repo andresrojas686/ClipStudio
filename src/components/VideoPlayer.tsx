@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useVideoState } from '../hooks/useVideoState'
 import { formatTime } from '../lib/formatUtils'
 import { centeredCrop, rotatedSize } from '../lib/geometry'
-import { aspectRatio, usesCrop, type ExportSettings, type Rotation } from '../lib/presets'
+import { aspectRatio, formatSpeed, usesCrop, type ExportSettings, type Rotation } from '../lib/presets'
 import { useEditor } from '../store/editorStore'
 import { CropOverlay } from './CropOverlay'
 import { ProgressBar } from './ProgressBar'
@@ -88,6 +88,18 @@ export function VideoPlayer() {
   const info = useEditor((s) => s.info)
   const settings = useEditor((s) => s.settings)
   const crop = useEditor((s) => s.crop)
+  const videoEl = useEditor((s) => s.videoEl)
+  const speed = settings.speed
+
+  // La vista previa se reproduce a la velocidad elegida (conservando el tono), para oír cómo quedará.
+  useEffect(() => {
+    // Se lee del store (no del valor del hook) porque es el elemento DOM que se configura.
+    const el = useEditor.getState().videoEl
+    if (!el) return
+    el.defaultPlaybackRate = speed
+    el.playbackRate = speed
+    el.preservesPitch = true
+  }, [videoEl, speed, previewUrl])
   const box = useElementSize(boxRef)
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
 
@@ -155,6 +167,14 @@ export function VideoPlayer() {
           <div className="absolute inset-0 flex items-center justify-center bg-black/80 px-8 text-center text-sm text-red-300">
             No se pudo generar la vista previa. Puedes seguir marcando segmentos escribiendo los tiempos a mano.
           </div>
+        )}
+        {speed !== 1 && (
+          <span
+            className="absolute top-2 right-2 rounded bg-violet-600/90 px-2 py-0.5 text-xs font-semibold text-white"
+            title="La vista previa y la exportación usan esta velocidad"
+          >
+            ▶ {formatSpeed(speed)}
+          </span>
         )}
         {isProxy && (
           <span className="absolute top-2 left-2 rounded bg-black/70 px-2 py-0.5 text-xs text-zinc-300">

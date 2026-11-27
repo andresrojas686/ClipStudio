@@ -2,7 +2,7 @@ import { useFfmpeg } from '../hooks/useFfmpeg'
 import { formatBytes, formatTime } from '../lib/formatUtils'
 import { effectiveSettings } from '../lib/exporter'
 import { computeGeometry } from '../lib/geometry'
-import { isStreamCopy, presetName } from '../lib/presets'
+import { formatSpeed, isStreamCopy, presetName } from '../lib/presets'
 import { useEditor, type ExportResult, type QueueJob } from '../store/editorStore'
 import { ProgressBar } from './ProgressBar'
 
@@ -28,7 +28,8 @@ function jobTitle(job: QueueJob, width: number | null, height: number | null) {
   const total = job.segments.reduce((a, seg) => a + seg.end - seg.start, 0)
   const n = job.segments.length
   const what = n > 1 && s.combine === 'merge' ? `${n} segmentos unidos` : `${n} clip${n > 1 ? 's' : ''}`
-  return { name: presetName(s.presetId), detail: [dims, `${what} (${formatTime(total, 0)})`].filter(Boolean).join(' · ') }
+  const speed = s.speed !== 1 ? `${formatSpeed(s.speed)} → ${formatTime(total / s.speed, 0)}` : ''
+  return { name: presetName(s.presetId), detail: [dims, `${what} (${formatTime(total, 0)})`, speed].filter(Boolean).join(' · ') }
 }
 
 export function ExportQueue() {

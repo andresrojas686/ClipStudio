@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react'
 import {
   CUSTOM_PRESET_ID,
+  formatSpeed,
   isPassThrough,
   PRESETS,
+  SPEEDS,
   usesCrop,
   type Aspect,
   type Bitrate,
@@ -174,6 +176,21 @@ export function ExportSettingsPanel() {
             </select>
           </label>
         </div>
+      </Section>
+
+      <Section title="Velocidad">
+        <div className="grid grid-cols-4 gap-1.5">
+          {SPEEDS.map((sp) => (
+            <Chip key={sp} active={settings.speed === sp} onClick={() => setSettings({ speed: sp })}>
+              <span className="block text-center font-medium">{formatSpeed(sp)}</span>
+            </Chip>
+          ))}
+        </div>
+        {settings.speed !== 1 && (
+          <p className="text-xs text-zinc-500">
+            {settings.speed > 1 ? 'Más rápido' : 'Cámara lenta'}: el audio cambia de ritmo sin cambiar el tono.
+          </p>
+        )}
       </Section>
 
       {isPassThrough(settings) && (

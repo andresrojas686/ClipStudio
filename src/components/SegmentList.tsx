@@ -72,6 +72,7 @@ function SegmentRow({ seg, index, count, selected }: { seg: Segment; index: numb
   const selectSegment = useEditor((s) => s.selectSegment)
   const playRange = useEditor((s) => s.playRange)
   const seek = useEditor((s) => s.seek)
+  const speed = useEditor((s) => s.settings.speed)
   const [error, setError] = useState<string | null>(null)
   const color = segmentColor(index)
 
@@ -101,7 +102,10 @@ function SegmentRow({ seg, index, count, selected }: { seg: Segment; index: numb
         <TimeInput label="Inicio" value={seg.start} onCommit={(t) => commit('start', t)} onFocus={() => seek(seg.start)} />
         <span className="text-zinc-600">→</span>
         <TimeInput label="Fin" value={seg.end} onCommit={(t) => commit('end', t)} onFocus={() => seek(seg.end)} />
-        <span className="font-mono text-xs text-zinc-400 tabular-nums">{formatTime(seg.end - seg.start, 1)}</span>
+        <span className="font-mono text-xs text-zinc-400 tabular-nums" title={speed !== 1 ? 'Duración original → duración final con la velocidad elegida' : undefined}>
+          {formatTime(seg.end - seg.start, 1)}
+          {speed !== 1 && <span className="text-violet-300"> → {formatTime((seg.end - seg.start) / speed, 1)}</span>}
+        </span>
         <div className="ml-auto flex gap-1">
           <button type="button" className="btn-icon" title="Previsualizar segmento" onClick={() => playRange(seg.start, seg.end)}>
             ▶

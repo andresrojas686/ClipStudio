@@ -1,8 +1,8 @@
 import { useFfmpeg } from '../hooks/useFfmpeg'
 import { effectiveSettings, needsBrowserDecoder } from '../lib/exporter'
-import { getExtension } from '../lib/formatUtils'
+import { formatTime, getExtension } from '../lib/formatUtils'
 import { describeOutput } from '../lib/geometry'
-import { isStreamCopy } from '../lib/presets'
+import { formatSpeed, isStreamCopy } from '../lib/presets'
 import { touchesRange } from '../lib/textOverlay'
 import { useEditor } from '../store/editorStore'
 import { ExportQueue } from './ExportQueue'
@@ -34,6 +34,13 @@ export function ExportPanel() {
       <p className="text-xs text-zinc-500">
         Salida: {describeOutput(settings, crop, info?.width ?? null, info?.height ?? null, ext)}
         {textCount > 0 && ` · ${textCount} texto${textCount > 1 ? 's' : ''}`}
+        {settings.speed !== 1 && segments.length > 0 && (
+          <>
+            {' · '}
+            <strong className="text-violet-300">a {formatSpeed(settings.speed)}</strong>
+            {` · duración final ${formatTime(segments.reduce((a, s) => a + s.end - s.start, 0) / settings.speed, 1)}`}
+          </>
+        )}
         {!copy && !browserDecode && ' · re-codificar en el navegador puede tardar varias veces la duración del clip.'}
       </p>
       {forcedEncode && (
