@@ -124,6 +124,16 @@ Aplicación web que permite al usuario cargar un video (**MP4, MOV, AVI, MKV, We
   - Con *fondo desenfocado* la vista previa toma la proporción de salida con bandas desenfocadas, para poder poner textos en ellas
   - Si un segmento tiene textos, el corte "Rápido" pasa a "Preciso"
 
+### Fase 2.8 — Velocidad del corto
+- [x] Elegir la velocidad del video exportado: 0,25× · 0,5× · 0,75× · 1× · 1,25× · 1,5× · 1,75× · 2×
+- [x] Se aplica a toda la exportación (con la cola se puede sacar el mismo clip a varias velocidades)
+- [x] El audio se acelera o ralentiza manteniendo el tono (`atempo`)
+- [x] Los textos se ajustan solos (aparecen en el mismo momento del contenido)
+- [x] Vista previa a la velocidad elegida, duración final en segmentos, resumen y cola; sufijo `_1.5x` en el archivo
+- Notas:
+  - Con velocidad distinta de 1× no hay corte "Rápido" (hay que re-codificar)
+  - Videos AV1: WebCodecs genera el clip a 1× y ffmpeg aplica la velocidad en un segundo paso
+
 ### Fase 3
 - [ ] Filtros y ajustes básicos (brillo, contraste, saturación)
 - [ ] Stickers (el texto superpuesto se hizo en la Fase 2.7)

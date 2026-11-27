@@ -30,6 +30,7 @@ Instagram Stories, Instagram Feed, YouTube). Todo el procesamiento ocurre **en t
 - **Segmentos a mano:** línea de tiempo con forma de onda del audio, marcas de inicio/fin (`I` / `O`) y asas arrastrables.
 - **Destinos predefinidos:** TikTok, Reels, Shorts, Stories (9:16), Instagram Feed (4:5), Cuadrado (1:1), YouTube (16:9) u Original.
 - **Encuadre:** recorte manual con un recuadro sobre el video, fondo desenfocado, proporción libre y rotación en pasos de 90°.
+- **Velocidad:** 0,25×, 0,5×, 0,75×, 1×, 1,25×, 1,5×, 1,75× o 2×; el audio cambia de ritmo sin cambiar el tono.
 - **Calidad:** resolución de salida (480p a 4K u original) y bitrate (automático o de 2 a 16 Mbps).
 - **Cola de exportación:** exporta los mismos segmentos en varios formatos de una vez, con progreso y descargas por trabajo.
 - **Salida:** MP4 (H.264 + AAC) compatible con todas las redes, o el formato original sin re-codificar.
@@ -158,6 +159,8 @@ Si descargaste el ZIP, descarga uno nuevo y repite los pasos 3 a 5.
    - **Encuadre:** proporción (original, 9:16, 4:5, 1:1, 16:9 o libre), *recortar* o *fondo desenfocado*, y **rotación**.
      En modo recorte, arrastra y redimensiona el recuadro sobre el video.
    - **Calidad:** resolución de salida y bitrate.
+   - **Velocidad:** de 0,25× (cámara lenta) a 2×. A 1,5× un tramo de 30 s queda en 20 s. La vista previa se
+     reproduce a esa velocidad y la lista de segmentos muestra la duración final. Con velocidad distinta de 1× se re-codifica.
    - **Corte** (solo sin cambios de encuadre ni calidad): *Rápido* sin re-codificar (corta en el fotograma clave anterior)
      o *Preciso* al fotograma.
    - Con varios segmentos: **clips separados** o **un solo video** unido en el orden de la lista.
@@ -274,6 +277,9 @@ se oculta sola.
   [mediabunny](https://mediabunny.dev/) (`src/lib/webcodecsExporter.ts`), usando el decodificador y codificador
   nativos del navegador. El corte *Rápido* sigue usando FFmpeg.
 - Tras cualquier fallo de FFmpeg el motor se recarga automáticamente (un `abort()` del wasm lo deja inutilizable).
+- **Velocidad:** en ffmpeg.wasm, `setpts=PTS/v` al final de la cadena de video (después de los textos, cuyos tiempos
+  siguen en tiempo del original) y `atempo` para el audio (dos encadenados para 0,25×). En la vía WebCodecs el clip
+  se genera a 1× y un segundo paso de ffmpeg cambia la velocidad.
 - **Textos:** un único renderizador en canvas (`src/lib/textRender.ts`) dibuja la vista previa y la exportación.
   En ffmpeg.wasm cada texto se rasteriza a PNG y se superpone con `overlay` + `enable=between(t,a,b)`; en la vía
   WebCodecs se dibuja sobre cada fotograma. La fuente Montserrat va incluida (@fontsource, licencia OFL).
@@ -291,6 +297,7 @@ El plan completo está en [`docs/plan-editor-clips-video.md`](docs/plan-editor-c
 | 2.5 | Dividir el video en N clips iguales con vista previa | ✅ Hecha |
 | 2.6 | Importar un video desde un link de YouTube (local, con yt-dlp) | ✅ Hecha |
 | 2.7 | Cajas de texto sobre el video, con posición, tamaño, estilo y rango de tiempo | ✅ Hecha |
+| 2.8 | Velocidad del corto (0,25× a 2×) con audio sin cambio de tono | ✅ Hecha |
 | 3 | Filtros, stickers, transiciones, guardado de proyectos | Pendiente |
 
 ## Licencia
